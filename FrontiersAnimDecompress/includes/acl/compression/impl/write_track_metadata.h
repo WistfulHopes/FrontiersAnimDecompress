@@ -24,7 +24,6 @@
 // SOFTWARE.
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "acl/version.h"
 #include "acl/core/memory_utils.h"
 #include "acl/core/track_desc.h"
 #include "acl/core/impl/compiler_utils.h"
@@ -38,8 +37,6 @@ ACL_IMPL_FILE_PRAGMA_PUSH
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	namespace acl_impl
 	{
 		inline uint32_t write_track_list_name(const track_array& tracks, char* out_track_list_name)
@@ -182,13 +179,9 @@ namespace acl
 						data[2] = desc.constant_rotation_threshold_angle;
 						data[3] = desc.constant_translation_threshold;
 						data[4] = desc.constant_scale_threshold;
-
-						rtm::quat_store(desc.default_value.rotation, data + 5);
-						rtm::vector_store3(desc.default_value.translation, data + 9);
-						rtm::vector_store3(desc.default_value.scale, data + 12);
 					}
 
-					output_buffer += sizeof(float) * 15;
+					output_buffer += sizeof(float) * 5;
 				}
 			}
 
@@ -220,8 +213,6 @@ namespace acl
 			return safe_static_cast<uint32_t>(output_buffer - output_buffer_start);
 		}
 	}
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }
 
 ACL_IMPL_FILE_PRAGMA_POP

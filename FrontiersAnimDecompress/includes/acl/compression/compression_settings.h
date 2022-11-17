@@ -24,7 +24,6 @@
 // SOFTWARE.
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "acl/version.h"
 #include "acl/core/impl/compiler_utils.h"
 #include "acl/core/error_result.h"
 #include "acl/core/hash.h"
@@ -42,8 +41,6 @@ ACL_IMPL_FILE_PRAGMA_PUSH
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	//////////////////////////////////////////////////////////////////////////
 	// Encapsulates all the compression settings related to database usage.
 	struct compression_database_settings
@@ -164,13 +161,6 @@ namespace acl
 		bool enable_database_support = false;
 
 		//////////////////////////////////////////////////////////////////////////
-		// Detects if the last sample matches the first for every sub-track.
-		// If it is the case, it is removed and the wrap looping policy is used
-		// otherwise we use the clamp policy and every sample is retained.
-		// See `sample_looping_policy` for details.
-		bool optimize_loops = false;
-
-		//////////////////////////////////////////////////////////////////////////
 		// These are optional metadata that can be added to compressed clips.
 		compression_metadata_settings metadata;
 
@@ -192,8 +182,6 @@ namespace acl
 	// Returns the recommended and default compression settings. These have
 	// been tested in a wide range of scenarios and perform best overall.
 	compression_settings get_default_compression_settings();
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }
 
 #include "acl/compression/impl/compression_settings.impl.h"

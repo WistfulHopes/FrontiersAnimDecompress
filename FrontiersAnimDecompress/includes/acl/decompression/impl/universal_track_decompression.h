@@ -24,7 +24,6 @@
 // SOFTWARE.
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "acl/version.h"
 #include "acl/core/compressed_tracks.h"
 #include "acl/core/compressed_tracks_version.h"
 #include "acl/core/interpolation_utils.h"
@@ -50,8 +49,6 @@ ACL_IMPL_FILE_PRAGMA_PUSH
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	namespace acl_impl
 	{
 		union persistent_universal_decompression_context
@@ -64,24 +61,6 @@ namespace acl
 			persistent_universal_decompression_context() noexcept {}
 			const compressed_tracks* get_compressed_tracks() const { return scalar.tracks; }
 			compressed_tracks_version16 get_version() const { return scalar.tracks->get_version(); }
-			sample_looping_policy get_looping_policy() const
-			{
-				const track_type8 track_type = scalar.tracks->get_track_type();
-				switch (track_type)
-				{
-				case track_type8::float1f:
-				case track_type8::float2f:
-				case track_type8::float3f:
-				case track_type8::float4f:
-				case track_type8::vector4f:
-					return static_cast<sample_looping_policy>(scalar.looping_policy);
-				case track_type8::qvvf:
-					return static_cast<sample_looping_policy>(transform.looping_policy);
-				default:
-					ACL_ASSERT(false, "Invalid track type");
-					return sample_looping_policy::non_looping;
-				}
-			}
 			bool is_initialized() const { return scalar.is_initialized(); }
 			void reset() { scalar.tracks = nullptr; }
 		};
@@ -125,28 +104,6 @@ namespace acl
 			default:
 				ACL_ASSERT(false, "Invalid track type");
 				return true;
-			}
-		}
-
-		template<class decompression_settings_type>
-		inline void set_looping_policy_v0(const persistent_universal_decompression_context& context, sample_looping_policy policy)
-		{
-			const track_type8 track_type = context.scalar.tracks->get_track_type();
-			switch (track_type)
-			{
-			case track_type8::float1f:
-			case track_type8::float2f:
-			case track_type8::float3f:
-			case track_type8::float4f:
-			case track_type8::vector4f:
-				set_looping_policy_v0<decompression_settings_type>(context.scalar, policy);
-				break;
-			case track_type8::qvvf:
-				set_looping_policy_v0<decompression_settings_type>(context.transform, policy);
-				break;
-			default:
-				ACL_ASSERT(false, "Invalid track type");
-				break;
 			}
 		}
 
@@ -222,8 +179,6 @@ namespace acl
 			}
 		}
 	}
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }
 
 #if defined(RTM_COMPILER_MSVC)

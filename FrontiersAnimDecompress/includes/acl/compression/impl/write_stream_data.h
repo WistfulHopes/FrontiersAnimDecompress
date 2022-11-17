@@ -24,12 +24,11 @@
 // SOFTWARE.
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "acl/version.h"
 #include "acl/core/impl/compiler_utils.h"
 #include "acl/core/iallocator.h"
 #include "acl/core/error.h"
 #include "acl/core/track_formats.h"
-#include "acl/core/impl/variable_bit_rates.h"
+#include "acl/core/variable_bit_rates.h"
 #include "acl/compression/impl/animated_track_utils.h"
 #include "acl/compression/impl/clip_context.h"
 
@@ -41,8 +40,6 @@ ACL_IMPL_FILE_PRAGMA_PUSH
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	namespace acl_impl
 	{
 		inline uint32_t get_constant_data_size(const clip_context& clip)
@@ -505,8 +502,6 @@ namespace acl
 			return safe_static_cast<uint32_t>(format_per_track_data - format_per_track_data_start);
 		}
 	}
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }
 
 ACL_IMPL_FILE_PRAGMA_POP

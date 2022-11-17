@@ -24,7 +24,6 @@
 // SOFTWARE.
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "acl/version.h"
 #include "acl/core/compressed_tracks.h"
 #include "acl/core/compressed_tracks_version.h"
 #include "acl/core/error.h"
@@ -55,8 +54,6 @@ ACL_IMPL_FILE_PRAGMA_PUSH
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	//////////////////////////////////////////////////////////////////////////
 	// Decompression context for the uniformly sampled algorithm. The context
 	// allows various decompression actions to be performed on a compressed track list.
@@ -111,21 +108,8 @@ namespace acl
 		bool is_dirty(const compressed_tracks& tracks) const;
 
 		//////////////////////////////////////////////////////////////////////////
-		// Sets the looping policy.
-		// Should only be used when the host runtime requires overriding the default behavior.
-		// By default, `sample_looping_policy::as_compressed` is used which uses `clamp` if
-		// loops were not optimized.
-		void set_looping_policy(sample_looping_policy policy);
-
-		//////////////////////////////////////////////////////////////////////////
-		// Gets the current looping policy.
-		// If wrapping is not disabled, this is the policy from the compressed data by default.
-		sample_looping_policy get_looping_policy() const;
-
-		//////////////////////////////////////////////////////////////////////////
 		// Seeks within the compressed tracks to a particular point in time with the
 		// desired rounding policy.
-		// The sample_time value must be within [0, clip duration] inclusive otherwise it will be clamped.
 		void seek(float sample_time, sample_rounding_policy rounding_policy);
 
 		//////////////////////////////////////////////////////////////////////////
@@ -176,8 +160,6 @@ namespace acl
 	{
 		return allocate_type<decompression_context<decompression_settings_type>>(allocator);
 	}
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }
 
 #include "acl/decompression/impl/decompress.impl.h"

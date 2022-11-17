@@ -24,7 +24,6 @@
 // SOFTWARE.
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "acl/version.h"
 #include "acl/core/bitset.h"
 #include "acl/core/iallocator.h"
 #include "acl/core/impl/compiler_utils.h"
@@ -41,8 +40,6 @@ ACL_IMPL_FILE_PRAGMA_PUSH
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	namespace acl_impl
 	{
 		inline uint32_t write_segment_start_indices(const clip_context& clip, uint32_t* segment_start_indices)
@@ -139,8 +136,6 @@ namespace acl
 			return size_written;
 		}
 	}
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }
 
 ACL_IMPL_FILE_PRAGMA_POP

@@ -24,7 +24,6 @@
 // SOFTWARE.
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "acl/version.h"
 #include "acl/core/algorithm_types.h"
 #include "acl/core/compressed_tracks_version.h"
 #include "acl/core/ptr_offset.h"
@@ -41,8 +40,6 @@ ACL_IMPL_FILE_PRAGMA_PUSH
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	class compressed_tracks;
 
 	namespace acl_impl
@@ -89,8 +86,7 @@ namespace acl
 
 			// Scalar tracks use it like this (listed from LSB):
 			// Bits [0, 31): unused (31 bits)
-			// Bit 30: is wrap optimized? See sample_looping_policy for details.
-			// Bit 31: has metadata?
+			// Bit [31, 32): has metadata?
 
 			// Transform tracks use it like this (listed from LSB):
 			// Bit 0: has scale?
@@ -99,30 +95,21 @@ namespace acl
 			// Bit 3: translation format
 			// Bits [4, 8): rotation format (4 bits)
 			// Bit 8: has database?
-			// Bit 9: has trivial default values? Non-trivial default values indicate that extra data beyond the clip will be needed at decompression (e.g. bind pose)
-			// Bits [10, 30): unused (20 bits)
-			// Bit 30: is wrap optimized? See sample_looping_policy for details.
+			// Bits [9, 31): unused (22 bits)
 			// Bit 31: has metadata?
 
-			// Transform only
-			bool get_has_scale() const { ACL_ASSERT(track_type == track_type8::qvvf, "Transform tracks only"); return (misc_packed & 1) != 0; }
-			void set_has_scale(bool has_scale) { ACL_ASSERT(track_type == track_type8::qvvf, "Transform tracks only"); misc_packed = (misc_packed & ~1) | static_cast<uint32_t>(has_scale); }
-			int32_t get_default_scale() const { ACL_ASSERT(track_type == track_type8::qvvf, "Transform tracks only"); return (misc_packed >> 1) & 1; }
-			void set_default_scale(uint32_t scale) { ACL_ASSERT(track_type == track_type8::qvvf, "Transform tracks only"); ACL_ASSERT(scale == 0 || scale == 1, "Invalid default scale"); misc_packed = (misc_packed & ~(1 << 1)) | (scale << 1); }
-			vector_format8 get_scale_format() const { ACL_ASSERT(track_type == track_type8::qvvf, "Transform tracks only"); return static_cast<vector_format8>((misc_packed >> 2) & 1); }
-			void set_scale_format(vector_format8 format) { ACL_ASSERT(track_type == track_type8::qvvf, "Transform tracks only"); misc_packed = (misc_packed & ~(1 << 2)) | (static_cast<uint32_t>(format) << 2); }
-			vector_format8 get_translation_format() const { ACL_ASSERT(track_type == track_type8::qvvf, "Transform tracks only"); return static_cast<vector_format8>((misc_packed >> 3) & 1); }
-			void set_translation_format(vector_format8 format) { ACL_ASSERT(track_type == track_type8::qvvf, "Transform tracks only"); misc_packed = (misc_packed & ~(1 << 3)) | (static_cast<uint32_t>(format) << 3); }
-			rotation_format8 get_rotation_format() const { ACL_ASSERT(track_type == track_type8::qvvf, "Transform tracks only"); return static_cast<rotation_format8>((misc_packed >> 4) & 15); }
-			void set_rotation_format(rotation_format8 format) { ACL_ASSERT(track_type == track_type8::qvvf, "Transform tracks only"); misc_packed = (misc_packed & ~(15 << 4)) | (static_cast<uint32_t>(format) << 4); }
-			bool get_has_database() const { ACL_ASSERT(track_type == track_type8::qvvf, "Transform tracks only"); return (misc_packed & (1 << 8)) != 0; }
-			void set_has_database(bool has_database) { ACL_ASSERT(track_type == track_type8::qvvf, "Transform tracks only"); misc_packed = (misc_packed & ~(1 << 8)) | (static_cast<uint32_t>(has_database) << 8); }
-			bool get_has_trivial_default_values() const { ACL_ASSERT(track_type == track_type8::qvvf, "Transform tracks only"); return (misc_packed & (1 << 9)) != 0; }
-			void set_has_trivial_default_values(bool has_trivial_default_values) { ACL_ASSERT(track_type == track_type8::qvvf, "Transform tracks only"); misc_packed = (misc_packed & ~(1 << 9)) | (static_cast<uint32_t>(has_trivial_default_values) << 9); }
-
-			// Common
-			bool get_is_wrap_optimized() const { return (misc_packed & (1 << 30)) != 0; }
-			void set_is_wrap_optimized(bool is_wrap_optimized) { misc_packed = (misc_packed & ~(1 << 30)) | (static_cast<uint32_t>(is_wrap_optimized) << 30); }
+			bool get_has_scale() const { return (misc_packed & 1) != 0; }
+			void set_has_scale(bool has_scale) { misc_packed = (misc_packed & ~1) | static_cast<uint32_t>(has_scale); }
+			int32_t get_default_scale() const { return (misc_packed >> 1) & 1; }
+			void set_default_scale(uint32_t scale) { ACL_ASSERT(scale == 0 || scale == 1, "Invalid default scale"); misc_packed = (misc_packed & ~(1 << 1)) | (scale << 1); }
+			vector_format8 get_scale_format() const { return static_cast<vector_format8>((misc_packed >> 2) & 1); }
+			void set_scale_format(vector_format8 format) { misc_packed = (misc_packed & ~(1 << 2)) | (static_cast<uint32_t>(format) << 2); }
+			vector_format8 get_translation_format() const { return static_cast<vector_format8>((misc_packed >> 3) & 1); }
+			void set_translation_format(vector_format8 format) { misc_packed = (misc_packed & ~(1 << 3)) | (static_cast<uint32_t>(format) << 3); }
+			rotation_format8 get_rotation_format() const { return static_cast<rotation_format8>((misc_packed >> 4) & 15); }
+			void set_rotation_format(rotation_format8 format) { misc_packed = (misc_packed & ~(15 << 4)) | (static_cast<uint32_t>(format) << 4); }
+			bool get_has_database() const { return (misc_packed & (1 << 8)) != 0; }
+			void set_has_database(bool has_database) { misc_packed = (misc_packed & ~(1 << 8)) | (static_cast<uint32_t>(has_database) << 8); }
 			bool get_has_metadata() const { return (misc_packed >> 31) != 0; }
 			void set_has_metadata(bool has_metadata) { misc_packed = (misc_packed & ~(1 << 31)) | (static_cast<uint32_t>(has_metadata) << 31); }
 		};
@@ -595,8 +582,6 @@ namespace acl
 			const uint8_t*							get_bulk_data_low() const { return bulk_data_offset[1].safe_add_to(this); }
 		};
 	}
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }
 
 ACL_IMPL_FILE_PRAGMA_POP

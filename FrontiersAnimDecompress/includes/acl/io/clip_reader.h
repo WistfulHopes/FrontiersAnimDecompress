@@ -24,9 +24,8 @@
 // SOFTWARE.
 ////////////////////////////////////////////////////////////////////////////////
 
-#if defined(ACL_USE_SJSON)
+#if defined(SJSON_CPP_PARSER)
 
-#include "acl/version.h"
 #include "acl/io/clip_reader_error.h"
 #include "acl/compression/compression_settings.h"
 #include "acl/compression/track_array.h"
@@ -45,16 +44,12 @@
 #include <rtm/qvvd.h>
 #include <rtm/qvvf.h>
 
-#include <sjson/parser.h>
-
 #include <cstdint>
 
 ACL_IMPL_FILE_PRAGMA_PUSH
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	//////////////////////////////////////////////////////////////////////////
 	// Enum to describe each type of raw content that an SJSON ACL file might contain.
 	enum class sjson_file_type
@@ -609,9 +604,7 @@ namespace acl
 					(*tracks)[i].set_name(convert_string(name));
 
 					rtm::qvvf bind_transform_ = rtm::qvv_cast(bind_transform);
-					bind_transform_.rotation = rtm::quat_normalize_deterministic(bind_transform_.rotation);
-
-					(*tracks)[i].get_description().default_value = bind_transform_;
+					bind_transform_.rotation = rtm::quat_normalize(bind_transform_.rotation);
 
 					(*bind_pose)[i] = bind_transform_;
 				}
@@ -856,7 +849,7 @@ namespace acl
 				{
 					double rotation[4] = { 0.0, 0.0, 0.0, 0.0 };
 					if (m_parser.try_read("bind_rotation", rotation, 4, 0.0) && !counting)
-						bind_transform.rotation = rtm::quat_normalize_deterministic(rtm::quat_cast(rtm::quat_load(&rotation[0])));
+						bind_transform.rotation = rtm::quat_normalize(rtm::quat_cast(rtm::quat_load(&rotation[0])));
 
 					double translation[3] = { 0.0, 0.0, 0.0 };
 					if (m_parser.try_read("bind_translation", translation, 3, 0.0) && !counting)
@@ -866,8 +859,6 @@ namespace acl
 					if (m_parser.try_read("bind_scale", scale, 3, 0.0) && !counting)
 						bind_transform.scale = rtm::vector_cast(rtm::vector_load3(&scale[0]));
 				}
-
-				transform_desc.default_value = bind_transform;
 
 				if (bind_pose != nullptr)
 					(*bind_pose)[i] = bind_transform;
@@ -1282,7 +1273,7 @@ namespace acl
 				if (!m_parser.array_ends())
 					return false;
 
-				track[i].rotation = rtm::quat_normalize_deterministic(rtm::quat_cast(rotation));
+				track[i].rotation = rtm::quat_normalize(rtm::quat_cast(rotation));
 			}
 
 			return true;
@@ -1375,10 +1366,8 @@ namespace acl
 			m_error.error = reason;
 		}
 	};
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }
 
 ACL_IMPL_FILE_PRAGMA_POP
 
-#endif	// #if defined(ACL_USE_SJSON)
+#endif	// #if defined(SJSON_CPP_PARSER)

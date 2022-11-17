@@ -24,7 +24,6 @@
 // SOFTWARE.
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "acl/version.h"
 #include "acl/core/additive_utils.h"
 #include "acl/core/impl/compiler_utils.h"
 #include "acl/core/hash.h"
@@ -37,8 +36,6 @@ ACL_IMPL_FILE_PRAGMA_PUSH
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	//////////////////////////////////////////////////////////////////////////
 	// Interface for all skeletal error metrics.
 	// An error metric is responsible for a few things:
@@ -506,8 +503,6 @@ namespace acl
 			}
 		}
 	};
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }
 
 ACL_IMPL_FILE_PRAGMA_POP

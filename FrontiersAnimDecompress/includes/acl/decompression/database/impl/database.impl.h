@@ -26,7 +26,6 @@
 
 // Included only once from database.h
 
-#include "acl/version.h"
 #include "acl/core/bitset.h"
 #include "acl/core/compressed_database.h"
 #include "acl/core/compressed_tracks_version.h"
@@ -36,8 +35,6 @@
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	namespace acl_impl
 	{
 		inline uint32_t calculate_runtime_data_size(const compressed_database& database)
@@ -92,6 +89,10 @@ namespace acl
 		const bool is_valid = database.is_valid(false).empty();
 		ACL_ASSERT(is_valid, "Invalid compressed database instance");
 		if (!is_valid)
+			return false;
+
+		ACL_ASSERT(database.get_version() == compressed_tracks_version16::v02_00_00, "Unsupported version");
+		if (database.get_version() != compressed_tracks_version16::v02_00_00)
 			return false;
 
 		ACL_ASSERT(database.is_bulk_data_inline(), "Bulk data must be inline when initializing without a streamer");
@@ -213,6 +214,10 @@ namespace acl
 		const bool is_valid = database.is_valid(false).empty();
 		ACL_ASSERT(is_valid, "Invalid compressed database instance");
 		if (!is_valid)
+			return false;
+
+		ACL_ASSERT(database.get_version() == compressed_tracks_version16::v02_00_00, "Unsupported version");
+		if (database.get_version() != compressed_tracks_version16::v02_00_00)
 			return false;
 
 		ACL_ASSERT(medium_tier_streamer.is_initialized(), "Medium importance tier streamer must be initialized");
@@ -570,6 +575,4 @@ namespace acl
 
 		return database_stream_request_result::dispatched;
 	}
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }

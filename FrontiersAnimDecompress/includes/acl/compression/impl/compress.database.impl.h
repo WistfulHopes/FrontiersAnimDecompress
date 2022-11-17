@@ -26,7 +26,6 @@
 
 // Included only once from compress.h
 
-#include "acl/version.h"
 #include "acl/core/bitset.h"
 #include "acl/core/compressed_database.h"
 #include "acl/core/error_result.h"
@@ -37,8 +36,6 @@
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	namespace acl_impl
 	{
 		struct frame_tier_mapping
@@ -444,7 +441,7 @@ namespace acl
 			return sample_indices;
 		}
 
-		inline void rewrite_segment_headers(const database_tier_mapping& tier_mapping, uint32_t tracks_index, const transform_tracks_header& input_transforms_header, const segment_header* headers, uint32_t segment_data_base_offset, segment_tier0_header* out_headers)
+		inline void write_segment_headers(const database_tier_mapping& tier_mapping, uint32_t tracks_index, const transform_tracks_header& input_transforms_header, const segment_header* headers, uint32_t segment_data_base_offset, segment_tier0_header* out_headers)
 		{
 			const bitset_description desc = bitset_description::make_from_num_bits<32>();
 
@@ -486,7 +483,7 @@ namespace acl
 			}
 		}
 
-		inline void rewrite_segment_data(const database_tier_mapping& tier_mapping, uint32_t tracks_index,
+		inline void write_segment_data(const database_tier_mapping& tier_mapping, uint32_t tracks_index,
 			const transform_tracks_header& input_transforms_header, const segment_header* input_headers,
 			transform_tracks_header& output_transforms_header, const segment_tier0_header* output_headers)
 		{
@@ -699,7 +696,7 @@ namespace acl
 
 				// Write our new segment headers
 				const uint32_t segment_data_base_offset = transforms_header->clip_range_data_offset + clip_range_data_size;
-				rewrite_segment_headers(tier_mapping, list_index, input_transforms_header, input_segment_headers, segment_data_base_offset, transforms_header->get_segment_tier0_headers());
+				write_segment_headers(tier_mapping, list_index, input_transforms_header, input_segment_headers, segment_data_base_offset, transforms_header->get_segment_tier0_headers());
 
 				// Copy our sub-track types, they do not change
 				std::memcpy(transforms_header->get_sub_track_types(), input_transforms_header.get_sub_track_types(), packed_sub_track_buffer_size);
@@ -711,7 +708,7 @@ namespace acl
 				std::memcpy(transforms_header->get_clip_range_data(), input_transforms_header.get_clip_range_data(), clip_range_data_size);
 
 				// Write our new segment data
-				rewrite_segment_data(tier_mapping, list_index, input_transforms_header, input_segment_headers, *transforms_header, transforms_header->get_segment_tier0_headers());
+				write_segment_data(tier_mapping, list_index, input_transforms_header, input_segment_headers, *transforms_header, transforms_header->get_segment_tier0_headers());
 
 				if (metadata_size != 0)
 				{
@@ -857,7 +854,7 @@ namespace acl
 		}
 
 		// Returns the number of bytes written
-		inline uint32_t write_tier_segment_data(const frame_tier_mapping* frames, uint32_t num_frames, uint8_t* out_segment_data)
+		inline uint32_t write_segment_data(const frame_tier_mapping* frames, uint32_t num_frames, uint8_t* out_segment_data)
 		{
 			uint64_t num_bits_written = 0;
 
@@ -1091,7 +1088,7 @@ namespace acl
 						segment_chunk_header.samples_offset = chunk_data_offset + chunk_header_size + segment_chunk_header.samples_offset;
 
 						uint8_t* animated_data = segment_chunk_header.samples_offset.add_to(bulk_data);
-						const uint32_t size = write_tier_segment_data(segment_frames, num_segment_frames, animated_data);
+						const uint32_t size = write_segment_data(segment_frames, num_segment_frames, animated_data);
 						ACL_ASSERT(size == segment_data_size, "Unexpected segment data size"); (void)size; (void)segment_data_size;
 
 						chunk_segment_index++;
@@ -1109,12 +1106,7 @@ namespace acl
 			const uint32_t num_segments = calculate_num_segments(db_compressed_tracks_list, context.num_compressed_tracks);
 			const uint32_t num_medium_chunks = write_database_chunk_descriptions(context, settings, quality_tier::medium_importance, nullptr);
 			const uint32_t num_low_chunks = write_database_chunk_descriptions(context, settings, quality_tier::lowest_importance, nullptr);
-
-			// Pad medium tier bulk data to ensure alignment since the lowest tier follows
 			const uint32_t bulk_data_medium_size = write_database_bulk_data(context, settings, quality_tier::medium_importance, db_compressed_tracks_list, nullptr);
-			const uint32_t aligned_bulk_data_medium_size = align_to(bulk_data_medium_size, k_database_bulk_data_alignment);
-
-			// No need to pad lowest tier since it is last
 			const uint32_t bulk_data_low_size = write_database_bulk_data(context, settings, quality_tier::lowest_importance, db_compressed_tracks_list, nullptr);
 
 			uint32_t database_buffer_size = 0;
@@ -1131,7 +1123,9 @@ namespace acl
 			database_buffer_size += num_tracks * sizeof(database_clip_metadata);					// Clip metadata
 
 			database_buffer_size = align_to(database_buffer_size, k_database_bulk_data_alignment);	// Align bulk data
-			database_buffer_size += aligned_bulk_data_medium_size;									// Bulk data
+			database_buffer_size += bulk_data_medium_size;											// Bulk data
+
+			database_buffer_size = align_to(database_buffer_size, k_database_bulk_data_alignment);	// Align bulk data
 			database_buffer_size += bulk_data_low_size;												// Bulk data
 
 			uint8_t* database_buffer = allocate_type_array_aligned<uint8_t>(context.allocator, database_buffer_size, alignof(compressed_database));
@@ -1156,7 +1150,7 @@ namespace acl
 			db_header->max_chunk_size = settings.max_chunk_size;
 			db_header->num_clips = num_tracks;
 			db_header->num_segments = num_segments;
-			db_header->bulk_data_size[0] = aligned_bulk_data_medium_size;
+			db_header->bulk_data_size[0] = bulk_data_medium_size;
 			db_header->bulk_data_size[1] = bulk_data_low_size;
 			db_header->set_is_bulk_data_inline(true);	// Data is always inline when compressing
 
@@ -1171,12 +1165,13 @@ namespace acl
 			database_buffer += num_tracks * sizeof(database_clip_metadata);						// Clip metadata
 
 			database_buffer = align_to(database_buffer, k_database_bulk_data_alignment);		// Align bulk data
-			if (aligned_bulk_data_medium_size != 0)
+			if (bulk_data_medium_size != 0)
 				db_header->bulk_data_offset[0] = uint32_t(database_buffer - db_header_start);	// Bulk data
 			else
 				db_header->bulk_data_offset[0] = invalid_ptr_offset();
-			database_buffer += aligned_bulk_data_medium_size;									// Bulk data
+			database_buffer += bulk_data_medium_size;											// Bulk data
 
+			database_buffer = align_to(database_buffer, k_database_bulk_data_alignment);		// Align bulk data
 			if (bulk_data_low_size != 0)
 				db_header->bulk_data_offset[1] = uint32_t(database_buffer - db_header_start);	// Bulk data
 			else
@@ -1197,7 +1192,7 @@ namespace acl
 			// Write our bulk data
 			const uint32_t written_bulk_data_medium_size = write_database_bulk_data(context, settings, quality_tier::medium_importance, db_compressed_tracks_list, db_header->get_bulk_data_medium());
 			ACL_ASSERT(written_bulk_data_medium_size == bulk_data_medium_size, "Unexpected amount of data written"); (void)written_bulk_data_medium_size;
-			db_header->bulk_data_hash[0] = hash32(db_header->get_bulk_data_medium(), aligned_bulk_data_medium_size);
+			db_header->bulk_data_hash[0] = hash32(db_header->get_bulk_data_medium(), bulk_data_medium_size);
 
 			const uint32_t written_bulk_data_low_size = write_database_bulk_data(context, settings, quality_tier::lowest_importance, db_compressed_tracks_list, db_header->get_bulk_data_low());
 			ACL_ASSERT(written_bulk_data_low_size == bulk_data_low_size, "Unexpected amount of data written"); (void)written_bulk_data_low_size;
@@ -1377,8 +1372,6 @@ namespace acl
 		const uint32_t num_medium_chunks = tier != quality_tier::medium_importance ? database.get_num_chunks(quality_tier::medium_importance) : 0;
 		const uint32_t num_low_chunks = tier != quality_tier::lowest_importance ? database.get_num_chunks(quality_tier::lowest_importance) : 0;
 		const uint32_t num_tracks = ref_header.num_clips;
-
-		// Bulk data sizes are already padded for alignment
 		const uint32_t bulk_data_medium_size = tier != quality_tier::medium_importance ? database.get_bulk_data_size(quality_tier::medium_importance) : 0;
 		const uint32_t bulk_data_low_size = tier != quality_tier::lowest_importance ? database.get_bulk_data_size(quality_tier::lowest_importance) : 0;
 
@@ -1397,6 +1390,8 @@ namespace acl
 
 		database_buffer_size = align_to(database_buffer_size, k_database_bulk_data_alignment);	// Align bulk data
 		database_buffer_size += bulk_data_medium_size;											// Bulk data
+
+		database_buffer_size = align_to(database_buffer_size, k_database_bulk_data_alignment);	// Align bulk data
 		database_buffer_size += bulk_data_low_size;												// Bulk data
 
 		// Allocate and setup our new database
@@ -1413,6 +1408,12 @@ namespace acl
 
 		// Copy our header
 		std::memcpy(db_header, &get_database_header(database), sizeof(database_header));
+
+		// Zero out our stripped tier
+		db_header->num_chunks[tier_index] = 0;
+		db_header->bulk_data_size[tier_index] = 0;
+		db_header->bulk_data_offset[tier_index] = invalid_ptr_offset();
+		db_header->bulk_data_hash[tier_index] = hash32(nullptr, 0);
 
 		database_buffer = align_to(database_buffer, 4);										// Align chunk descriptions
 		database_buffer += num_medium_chunks * sizeof(database_chunk_description);			// Chunk descriptions
@@ -1431,17 +1432,12 @@ namespace acl
 			db_header->bulk_data_offset[0] = invalid_ptr_offset();
 		database_buffer += bulk_data_medium_size;											// Bulk data
 
+		database_buffer = align_to(database_buffer, k_database_bulk_data_alignment);		// Align bulk data
 		if (bulk_data_low_size != 0)
 			db_header->bulk_data_offset[1] = uint32_t(database_buffer - db_header_start);	// Bulk data
 		else
 			db_header->bulk_data_offset[1] = invalid_ptr_offset();
 		database_buffer += bulk_data_low_size;												// Bulk data
-
-		// Zero out our stripped tier
-		db_header->num_chunks[tier_index] = 0;
-		db_header->bulk_data_size[tier_index] = 0;
-		db_header->bulk_data_offset[tier_index] = invalid_ptr_offset();
-		db_header->bulk_data_hash[tier_index] = hash32(nullptr, 0);
 
 		// Copy our chunk descriptions
 		if (tier != quality_tier::medium_importance)
@@ -1458,15 +1454,21 @@ namespace acl
 			// Copy the remaining bulk data
 			if (tier != quality_tier::medium_importance)
 			{
-				const uint8_t* src_bulk_data = database.get_bulk_data(quality_tier::medium_importance);
-				uint8_t* dst_bulk_data = db_header->get_bulk_data_medium();
-				std::memcpy(dst_bulk_data, src_bulk_data, bulk_data_medium_size);
+				database_buffer = align_to(database_buffer, k_database_bulk_data_alignment);
+
+				const uint32_t bulk_data_size = database.get_bulk_data_size(quality_tier::medium_importance);
+				const uint8_t* bulk_data = database.get_bulk_data(quality_tier::medium_importance);
+				std::memcpy(database_buffer, bulk_data, bulk_data_size);
+				database_buffer += bulk_data_size;
 			}
 			else if (tier != quality_tier::lowest_importance)
 			{
-				const uint8_t* src_bulk_data = database.get_bulk_data(quality_tier::lowest_importance);
-				uint8_t* dst_bulk_data = db_header->get_bulk_data_low();
-				std::memcpy(dst_bulk_data, src_bulk_data, bulk_data_low_size);
+				database_buffer = align_to(database_buffer, k_database_bulk_data_alignment);
+
+				const uint32_t bulk_data_size = database.get_bulk_data_size(quality_tier::lowest_importance);
+				const uint8_t* bulk_data = database.get_bulk_data(quality_tier::lowest_importance);
+				std::memcpy(database_buffer, bulk_data, bulk_data_size);
+				database_buffer += bulk_data_size;
 			}
 		}
 
@@ -1479,15 +1481,15 @@ namespace acl
 		{
 			if (tier != quality_tier::medium_importance)
 			{
-				const uint32_t bulk_data_size = out_stripped_database->get_bulk_data_size(quality_tier::medium_importance);
-				const uint8_t* bulk_data = out_stripped_database->get_bulk_data(quality_tier::medium_importance);
+				const uint32_t bulk_data_size = database.get_bulk_data_size(quality_tier::medium_importance);
+				const uint8_t* bulk_data = database.get_bulk_data(quality_tier::medium_importance);
 				const uint32_t bulk_data_hash = hash32(bulk_data, bulk_data_size);
 				ACL_ASSERT(bulk_data_hash == database.get_bulk_data_hash(quality_tier::medium_importance), "Bulk data hash mismatch");
 			}
 			else if (tier != quality_tier::lowest_importance)
 			{
-				const uint32_t bulk_data_size = out_stripped_database->get_bulk_data_size(quality_tier::lowest_importance);
-				const uint8_t* bulk_data = out_stripped_database->get_bulk_data(quality_tier::lowest_importance);
+				const uint32_t bulk_data_size = database.get_bulk_data_size(quality_tier::lowest_importance);
+				const uint8_t* bulk_data = database.get_bulk_data(quality_tier::lowest_importance);
 				const uint32_t bulk_data_hash = hash32(bulk_data, bulk_data_size);
 				ACL_ASSERT(bulk_data_hash == database.get_bulk_data_hash(quality_tier::lowest_importance), "Bulk data hash mismatch");
 			}
@@ -1496,6 +1498,4 @@ namespace acl
 
 		return error_result();
 	}
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }

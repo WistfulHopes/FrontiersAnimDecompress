@@ -24,13 +24,12 @@
 // SOFTWARE.
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "acl/version.h"
 #include "acl/core/compressed_tracks.h"
 #include "acl/core/compressed_tracks_version.h"
 #include "acl/core/interpolation_utils.h"
 #include "acl/core/track_writer.h"
+#include "acl/core/variable_bit_rates.h"
 #include "acl/core/impl/compiler_utils.h"
-#include "acl/core/impl/variable_bit_rates.h"
 #include "acl/decompression/database/database.h"
 #include "acl/math/scalar_packing.h"
 #include "acl/math/vector4_packing.h"
@@ -52,38 +51,30 @@ ACL_IMPL_FILE_PRAGMA_PUSH
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	namespace acl_impl
 	{
-		struct persistent_scalar_decompression_context_v0
+		struct alignas(64) persistent_scalar_decompression_context_v0
 		{
-			// Clip related data									//   offsets
+			// Clip related data							//   offsets
 			// Only member used to detect if we are initialized, must be first
-			const compressed_tracks* tracks;						//   0 |   0
+			const compressed_tracks* tracks;				//   0 |   0
 
-			uint32_t tracks_hash;									//   4 |   8
+			uint32_t tracks_hash;							//   4 |   8
 
-			// Only used when the wrap loop policy isn't supported
-			float duration;											//   8 |  12
+			float duration;									//   8 |  12
 
-			// Seeking related data
-			float interpolation_alpha;								//  12 |  16
-			float sample_time;										//  16 |  20
+															// Seeking related data
+			float interpolation_alpha;						//  12 |  16
+			float sample_time;								//  16 |  20
 
-			uint32_t key_frame_bit_offsets[2];						//  20 |  24	// Variable quantization
+			uint32_t key_frame_bit_offsets[2];				//  20 |  24	// Variable quantization
 
-			uint8_t looping_policy;									//  28 |  32
-			uint8_t rounding_policy;								//  29 |  33
-
-			uint8_t padding_tail[sizeof(void*) == 4 ? 34 : 30];		//  30 |  34
+			uint8_t padding_tail[sizeof(void*) == 4 ? 36 : 32];
 
 			//////////////////////////////////////////////////////////////////////////
 
 			const compressed_tracks* get_compressed_tracks() const { return tracks; }
 			compressed_tracks_version16 get_version() const { return tracks->get_version(); }
-			sample_looping_policy get_looping_policy() const { return static_cast<sample_looping_policy>(looping_policy); }
-			sample_rounding_policy get_rounding_policy() const { return static_cast<sample_rounding_policy>(rounding_policy); }
 			bool is_initialized() const { return tracks != nullptr; }
 			void reset() { tracks = nullptr; }
 		};
@@ -100,18 +91,9 @@ namespace acl
 
 			context.tracks = &tracks;
 			context.tracks_hash = tracks.get_hash();
+			context.duration = tracks.get_duration();
 			context.sample_time = -1.0F;
-
-			if (decompression_settings_type::is_wrapping_supported())
-			{
-				context.duration = tracks.get_finite_duration();
-				context.looping_policy = static_cast<uint8_t>(tracks.get_looping_policy());
-			}
-			else
-			{
-				context.duration = tracks.get_finite_duration(sample_looping_policy::clamp);
-				context.looping_policy = static_cast<uint8_t>(sample_looping_policy::clamp);
-			}
+			context.interpolation_alpha = 0.0;
 
 			return true;
 		}
@@ -128,24 +110,6 @@ namespace acl
 		}
 
 		template<class decompression_settings_type>
-		inline void set_looping_policy_v0(persistent_scalar_decompression_context_v0& context, sample_looping_policy policy)
-		{
-			if (!decompression_settings_type::is_wrapping_supported())
-				return;	// Only clamping is supported
-
-			if (policy == sample_looping_policy::as_compressed)
-				policy = context.tracks->get_looping_policy();
-
-			const sample_looping_policy current_policy = static_cast<sample_looping_policy>(context.looping_policy);
-			if (current_policy != policy)
-			{
-				// Policy changed
-				context.duration = context.tracks->get_finite_duration(policy);
-				context.looping_policy = static_cast<uint8_t>(policy);
-			}
-		}
-
-		template<class decompression_settings_type>
 		inline void seek_v0(persistent_scalar_decompression_context_v0& context, float sample_time, sample_rounding_policy rounding_policy)
 		{
 			const acl_impl::tracks_header& header = acl_impl::get_tracks_header(*context.tracks);
@@ -156,19 +120,14 @@ namespace acl
 			if (decompression_settings_type::clamp_sample_time())
 				sample_time = rtm::scalar_clamp(sample_time, 0.0F, context.duration);
 
-			if (context.sample_time == sample_time && context.get_rounding_policy() == rounding_policy)
+			if (context.sample_time == sample_time)
 				return;
 
 			context.sample_time = sample_time;
 
-			// If the wrap looping policy isn't supported, use our statically known value
-			const sample_looping_policy looping_policy_ = decompression_settings_type::is_wrapping_supported() ? static_cast<sample_looping_policy>(context.looping_policy) : sample_looping_policy::clamp;
-
 			uint32_t key_frame0;
 			uint32_t key_frame1;
-			find_linear_interpolation_samples_with_sample_rate(header.num_samples, header.sample_rate, sample_time, rounding_policy, looping_policy_, key_frame0, key_frame1, context.interpolation_alpha);
-
-			context.rounding_policy = static_cast<uint8_t>(rounding_policy);
+			find_linear_interpolation_samples_with_sample_rate(header.num_samples, header.sample_rate, sample_time, rounding_policy, key_frame0, key_frame1, context.interpolation_alpha);
 
 			const acl_impl::scalar_tracks_header& scalars_header = acl_impl::get_scalar_tracks_header(*context.tracks);
 
@@ -197,22 +156,6 @@ namespace acl
 			const acl_impl::scalar_tracks_header& scalars_header = acl_impl::get_scalar_tracks_header(*context.tracks);
 			const rtm::scalarf interpolation_alpha = rtm::scalar_set(context.interpolation_alpha);
 
-			const sample_rounding_policy rounding_policy = static_cast<sample_rounding_policy>(context.rounding_policy);
-
-			float interpolation_alpha_per_policy[k_num_sample_rounding_policies] = {};
-			if (decompression_settings_type::is_per_track_rounding_supported())
-			{
-				const float alpha = context.interpolation_alpha;
-				const float no_rounding_alpha = apply_rounding_policy(alpha, sample_rounding_policy::none);
-
-				interpolation_alpha_per_policy[static_cast<int>(sample_rounding_policy::none)] = no_rounding_alpha;
-				interpolation_alpha_per_policy[static_cast<int>(sample_rounding_policy::floor)] = apply_rounding_policy(alpha, sample_rounding_policy::floor);
-				interpolation_alpha_per_policy[static_cast<int>(sample_rounding_policy::ceil)] = apply_rounding_policy(alpha, sample_rounding_policy::ceil);
-				interpolation_alpha_per_policy[static_cast<int>(sample_rounding_policy::nearest)] = apply_rounding_policy(alpha, sample_rounding_policy::nearest);
-				// We'll assert if we attempt to use this, but in case they are skipped/disabled, we interpolate
-				interpolation_alpha_per_policy[static_cast<int>(sample_rounding_policy::per_track)] = no_rounding_alpha;
-			}
-
 			const acl_impl::track_metadata* per_track_metadata = scalars_header.get_track_metadata();
 			const float* constant_values = scalars_header.get_track_constant_values();
 			const float* range_values = scalars_header.get_track_range_values();
@@ -228,15 +171,6 @@ namespace acl
 				const acl_impl::track_metadata& metadata = per_track_metadata[track_index];
 				const uint8_t bit_rate = metadata.bit_rate;
 				const uint32_t num_bits_per_component = get_num_bits_at_bit_rate(bit_rate);
-
-				rtm::scalarf alpha = interpolation_alpha;
-				if (decompression_settings_type::is_per_track_rounding_supported())
-				{
-					const sample_rounding_policy rounding_policy_ = writer.get_rounding_policy(rounding_policy, track_index);
-					ACL_ASSERT(rounding_policy_ != sample_rounding_policy::per_track, "track_writer::get_rounding_policy() cannot return per_track");
-
-					alpha = rtm::scalar_set(interpolation_alpha_per_policy[static_cast<int>(rounding_policy_)]);
-				}
 
 				if (track_type == track_type8::float1f && decompression_settings_type::is_track_type_supported(track_type8::float1f))
 				{
@@ -267,7 +201,7 @@ namespace acl
 							range_values += 2;
 						}
 
-						value = rtm::scalar_lerp(value0, value1, alpha);
+						value = rtm::scalar_lerp(value0, value1, interpolation_alpha);
 
 						const uint32_t num_sample_bits = num_bits_per_component;
 						track_bit_offset0 += num_sample_bits;
@@ -305,7 +239,7 @@ namespace acl
 							range_values += 4;
 						}
 
-						value = rtm::vector_lerp(value0, value1, alpha);
+						value = rtm::vector_lerp(value0, value1, interpolation_alpha);
 
 						const uint32_t num_sample_bits = num_bits_per_component * 2;
 						track_bit_offset0 += num_sample_bits;
@@ -343,7 +277,7 @@ namespace acl
 							range_values += 6;
 						}
 
-						value = rtm::vector_lerp(value0, value1, alpha);
+						value = rtm::vector_lerp(value0, value1, interpolation_alpha);
 
 						const uint32_t num_sample_bits = num_bits_per_component * 3;
 						track_bit_offset0 += num_sample_bits;
@@ -381,7 +315,7 @@ namespace acl
 							range_values += 8;
 						}
 
-						value = rtm::vector_lerp(value0, value1, alpha);
+						value = rtm::vector_lerp(value0, value1, interpolation_alpha);
 
 						const uint32_t num_sample_bits = num_bits_per_component * 4;
 						track_bit_offset0 += num_sample_bits;
@@ -419,7 +353,7 @@ namespace acl
 							range_values += 8;
 						}
 
-						value = rtm::vector_lerp(value0, value1, alpha);
+						value = rtm::vector_lerp(value0, value1, interpolation_alpha);
 
 						const uint32_t num_sample_bits = num_bits_per_component * 4;
 						track_bit_offset0 += num_sample_bits;
@@ -456,16 +390,7 @@ namespace acl
 				disable_fp_exceptions(fp_env);
 
 			const scalar_tracks_header& scalars_header = get_scalar_tracks_header(*context.tracks);
-
-			rtm::scalarf interpolation_alpha = rtm::scalar_set(context.interpolation_alpha);
-			if (decompression_settings_type::is_per_track_rounding_supported())
-			{
-				const sample_rounding_policy rounding_policy = static_cast<sample_rounding_policy>(context.rounding_policy);
-				const sample_rounding_policy rounding_policy_ = writer.get_rounding_policy(rounding_policy, track_index);
-				ACL_ASSERT(rounding_policy_ != sample_rounding_policy::per_track, "track_writer::get_rounding_policy() cannot return per_track");
-				
-				interpolation_alpha = rtm::scalar_set(apply_rounding_policy(context.interpolation_alpha, rounding_policy_));
-			}
+			const rtm::scalarf interpolation_alpha = rtm::scalar_set(context.interpolation_alpha);
 
 			const float* constant_values = scalars_header.get_track_constant_values();
 			const float* range_values = scalars_header.get_track_range_values();
@@ -649,8 +574,6 @@ namespace acl
 				restore_fp_exceptions(fp_env);
 		}
 	}
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }
 
 #if defined(RTM_COMPILER_MSVC)

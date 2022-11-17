@@ -3,6 +3,11 @@
 #include <ostream>
 #include <vector>
 
+#include "acl/compression/compress.h"
+#include "acl/compression/compression_settings.h"
+#include "acl/compression/output_stats.h"
+#include "acl/compression/track_array.h"
+#include "acl/core/ansi_allocator.h"
 #include "acl/decompression/decompress.h"
 #include "acl/decompression/decompression_settings.h"
 
@@ -48,13 +53,6 @@ struct atom_indices
 
 struct frontiers_writer final : public track_writer
 {
-	//////////////////////////////////////////////////////////////////////////
-// For performance reasons, this writer skips all default sub-tracks.
-// It is the responsibility of the caller to pre-populate them by calling initialize_with_defaults().
-	static constexpr acl::default_sub_track_mode get_default_rotation_mode() { return acl::default_sub_track_mode::skipped; }
-	static constexpr acl::default_sub_track_mode get_default_translation_mode() { return acl::default_sub_track_mode::skipped; }
-	static constexpr acl::default_sub_track_mode get_default_scale_mode() { return acl::default_sub_track_mode::skipped; }
-
 	explicit frontiers_writer(std::vector<rtm::qvvf>& Transforms_) : Transforms(Transforms_) {}
 
 	std::vector<rtm::qvvf>& Transforms;
@@ -89,6 +87,38 @@ struct anim_output
 	std::vector<std::vector<rtm::qvvf>> all_tracks;
 };
 
+static bool compressed_anim_to_buffer(const char* filename, const char*& out_buffer, size_t& out_buffer_size)
+{
+	FILE* file;
+
+	//Open file
+	file = fopen(filename, "rb");
+	if (!file)
+	{
+		fprintf(stderr, "Unable to open file %s \n", filename);
+		return false;
+	}
+
+	//Get file length
+	fseek(file, 0, SEEK_END);
+	out_buffer_size = ftell(file) - 0x80 - 0x34;
+	fseek(file, 0x80, SEEK_SET);
+
+	//Allocate memory
+	out_buffer = (char*)malloc(out_buffer_size + 1);
+	if (!out_buffer)
+	{
+		fprintf(stderr, "Memory error! \n");
+		fclose(file);
+		return false;
+	}
+
+	//Read file contents into buffer
+	fread((void*)out_buffer, out_buffer_size, 1, file);
+	fclose(file);
+	return true;
+}
+
 static bool anim_to_buffer(const char* filename, const char*& out_buffer, size_t& out_buffer_size)
 {
 	FILE* file;
@@ -103,8 +133,8 @@ static bool anim_to_buffer(const char* filename, const char*& out_buffer, size_t
 
 	//Get file length
 	fseek(file, 0, SEEK_END);
-	out_buffer_size = ftell(file) - 0x80 - 0x34;
-	fseek(file, 0x80, SEEK_SET);
+	out_buffer_size = ftell(file);
+	fseek(file, 0, SEEK_SET);
 
 	//Allocate memory
 	out_buffer = (char*)malloc(out_buffer_size + 1);
@@ -121,23 +151,17 @@ static bool anim_to_buffer(const char* filename, const char*& out_buffer, size_t
 	return true;
 }
 
-int main(int argc, char* argv[])
+bool decompress(char* filename)
 {
-	if (argc != 2)
-	{
-		std::cout << "Invalid arguments! PXD should be the only argument" << std::endl;
-		return 1;
-	}
-
     decompression_context<default_transform_decompression_settings> context;
 
 	const char* buffer = nullptr;
 	size_t buffer_size = 0;
 
-	if (!anim_to_buffer(argv[1], buffer, buffer_size))
+	if (!compressed_anim_to_buffer(filename, buffer, buffer_size))
 	{
 		std::cout << "Failed to read file to buffer" << std::endl;
-		return 1;
+		return false;
 	}
 	
 	error_result result;
@@ -147,7 +171,7 @@ int main(int argc, char* argv[])
     if (!context.initialize(*compressed_anim))
     {
 		std::cout << "Failed to read anim: " << result.c_str() << std::endl;
-    	return 1;
+		return false;
     }
 	std::vector<rtm::qvvf> raw_local_pose_transforms;
 
@@ -178,14 +202,14 @@ int main(int argc, char* argv[])
 	output.bone_count = compressed_anim->get_num_tracks();
 	output.all_tracks = all_tracks;
 
-	char* out_name = (char*)malloc(strlen(argv[1]) + 7);
-	strcpy(out_name, argv[1]);
+	char* out_name = (char*)malloc(strlen(filename) + 7);
+	strcpy(out_name, filename);
 	strcat(out_name, ".outanim");
 	
 	std::ofstream wf(out_name, std::ios::out | std::ios::binary);
 	if (!wf) {
 		std::cout << "Cannot open file!" << std::endl;
-		return 1;
+		return false;
 	}
 	wf.write((char*)&output.duration, sizeof(float));
 	wf.write((char*)&output.frame_count, sizeof(uint32_t));
@@ -196,6 +220,126 @@ int main(int argc, char* argv[])
 		wf.write((char*)output.all_tracks[i].data(), sizeof rtm::qvvf * output.all_tracks[i].size());
 	}
 	wf.close();
+	
+	std::cout << "File written" << std::endl;
 
+	return true;
+}
+
+bool compress(char* filename)
+{
+	const char* buffer = nullptr;
+	size_t buffer_size = 0;
+
+	if (!anim_to_buffer(filename, buffer, buffer_size))
+	{
+		std::cout << "Failed to read file to buffer" << std::endl;
+		return false;
+	}
+
+	float duration = *(float*)&buffer[0];
+	uint32_t sample_count = *(uint32_t*)&buffer[4];
+	float sample_rate = (float)sample_count / duration;
+	uint32_t track_count = *(uint32_t*)&buffer[8];
+
+	ansi_allocator allocator;
+	track_array_qvvf raw_track_list(allocator, track_count);
+	
+	for (uint32_t i = 0; i < track_count; i++)
+	{
+		std::vector<rtm::qvvf> track;
+		for (uint32_t j = 0; j < sample_count; j++)
+		{
+			uint32_t file_pos = 0xC + j * track_count * sizeof rtm::qvvf + i * sizeof rtm::qvvf;
+			rtm::qvvf transform = *(rtm::qvvf*)&buffer[file_pos];
+			rtm::qvvf transform_default = rtm::qvvf();
+			if (std::memcmp((void*)&transform.scale, (void*)&transform_default.scale, sizeof (__m128)) == 0)
+			{
+				transform.scale = _mm_set_ps(1, 1, 1, 1);
+			}
+			track.push_back(transform);
+		}
+
+		track_desc_transformf desc;
+		desc.output_index = i;
+		desc.precision = 0.001f;
+		desc.shell_distance = 3.f;
+		track_qvvf raw_track = track_qvvf::make_reserve(desc, allocator, sample_count, sample_rate);
+		for (uint32_t j = 0; j < sample_count; j++)
+		{
+			raw_track[j] = track[j];
+		}
+		raw_track_list[i] = std::move(raw_track);
+	}
+	
+	std::cout << "Tracks read" << std::endl;
+	
+	compression_settings settings;
+	settings.level = compression_level8::highest;
+	settings.rotation_format = rotation_format8::quatf_drop_w_variable;
+	settings.translation_format = vector_format8::vector3f_variable;
+	settings.scale_format = vector_format8::vector3f_variable;
+
+	qvvf_transform_error_metric error_metric;
+	settings.error_metric = &error_metric;
+
+	output_stats stats;
+	compressed_tracks* out_compressed_tracks = nullptr;
+	error_result result = compress_track_list(allocator, raw_track_list, settings, out_compressed_tracks, stats);
+
+	if (out_compressed_tracks == nullptr)
+	{
+		std::cout << "Failed to compress anim: " << result.c_str() << std::endl;
+		return false;
+	}
+	
+	std::cout << "Compressed tracks" << std::endl;
+
+	char* out_name = (char*)malloc(strlen(filename) + 7);
+	strcpy(out_name, filename);
+	strcat(out_name, ".anm.pxd");
+	
+	std::ofstream wf(out_name, std::ios::out | std::ios::binary);
+	if (!wf) {
+		std::cout << "Cannot open file!" << std::endl;
+		return false;
+	}
+	wf.write((char*)out_compressed_tracks, out_compressed_tracks->get_size());
+	
+	std::cout << "File written" << std::endl;
+
+	return true;
+}
+
+int main(int argc, char* argv[])
+{
+	if (argc != 2)
+	{
+		std::cout << "Invalid arguments! The animation file should be the only argument. For decompression, this is the .anm.pxd. For compression, this is the .outanim." << std::endl;
+		return 1;
+	}
+	const char *dot = strrchr(argv[1], '.');
+	if(!dot || dot == argv[1])
+	{
+		std::cout << "Invalid arguments! The animation file should be the only argument. For decompression, this is the .anm.pxd. For compression, this is the .outanim." << std::endl;
+		return 1;
+	}
+
+	if (!strcmp(dot, ".pxd"))
+	{
+		if (!decompress(argv[1]))
+			return 1;
+	}
+	else if (!strcmp(dot, ".outanim"))
+	{
+		if (!compress(argv[1]))
+			return 1;
+	}
+	else
+	{
+		std::cout << "Invalid arguments! The animation file should be the only argument. For decompression, this is the .anm.pxd. For compression, this is the .outanim." << std::endl;
+		return 1;
+	}
+	
     return 0;
 }

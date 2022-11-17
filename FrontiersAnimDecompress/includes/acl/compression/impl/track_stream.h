@@ -24,19 +24,17 @@
 // SOFTWARE.
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "acl/version.h"
 #include "acl/core/iallocator.h"
 #include "acl/core/impl/compiler_utils.h"
 #include "acl/core/error.h"
-#include "acl/core/time_utils.h"
 #include "acl/core/track_formats.h"
 #include "acl/core/track_types.h"
-#include "acl/core/impl/variable_bit_rates.h"
+#include "acl/core/utils.h"
+#include "acl/core/variable_bit_rates.h"
 #include "acl/math/quat_packing.h"
 #include "acl/math/vector4_packing.h"
 
 #include <rtm/quatf.h>
-#include <rtm/qvvf.h>
 #include <rtm/vector4f.h>
 
 #include <cstdint>
@@ -45,8 +43,6 @@ ACL_IMPL_FILE_PRAGMA_PUSH
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	namespace acl_impl
 	{
 		class track_stream
@@ -86,14 +82,13 @@ namespace acl
 				*safe_ptr_cast<sample_type>(ptr) = sample;
 			}
 
-			uint32_t get_num_samples_allocated() const { return m_num_samples_allocated; }
 			uint32_t get_num_samples() const { return m_num_samples; }
 			uint32_t get_sample_size() const { return m_sample_size; }
 			float get_sample_rate() const { return m_sample_rate; }
 			animation_track_type8 get_track_type() const { return m_type; }
 			uint8_t get_bit_rate() const { return m_bit_rate; }
 			bool is_bit_rate_variable() const { return m_bit_rate != k_invalid_bit_rate; }
-			float get_finite_duration() const { return calculate_finite_duration(m_num_samples, m_sample_rate); }
+			float get_duration() const { return calculate_duration(m_num_samples, m_sample_rate); }
 
 			uint32_t get_packed_sample_size() const
 			{
@@ -103,33 +98,12 @@ namespace acl
 					return get_packed_vector_size(m_format.vector);
 			}
 
-			// Used during loop optimization, the last sample is removed since the first one repeats
-			void strip_last_sample()
-			{
-				ACL_ASSERT(m_num_samples_allocated > 1, "Too few samples to strip");
-				if (m_num_samples_allocated <= 1)
-					return;
-
-				m_num_samples = m_num_samples_allocated - 1;
-			}
-
 		protected:
-			track_stream(animation_track_type8 type, track_format8 format) noexcept
-				: m_allocator(nullptr)
-				, m_samples(nullptr)
-				, m_num_samples_allocated(0)
-				, m_num_samples(0)
-				, m_sample_size(0)
-				, m_sample_rate(0.0F)
-				, m_type(type)
-				, m_format(format)
-				, m_bit_rate(0)
-			{}
+			track_stream(animation_track_type8 type, track_format8 format) noexcept : m_allocator(nullptr), m_samples(nullptr), m_num_samples(0), m_sample_size(0), m_sample_rate(0.0F), m_type(type), m_format(format), m_bit_rate(0) {}
 
 			track_stream(iallocator& allocator, uint32_t num_samples, uint32_t sample_size, float sample_rate, animation_track_type8 type, track_format8 format, uint8_t bit_rate)
 				: m_allocator(&allocator)
 				, m_samples(reinterpret_cast<uint8_t*>(allocator.allocate(sample_size * size_t(num_samples) + k_padding, 16)))
-				, m_num_samples_allocated(num_samples)
 				, m_num_samples(num_samples)
 				, m_sample_size(sample_size)
 				, m_sample_rate(sample_rate)
@@ -142,7 +116,6 @@ namespace acl
 			track_stream(track_stream&& other) noexcept
 				: m_allocator(other.m_allocator)
 				, m_samples(other.m_samples)
-				, m_num_samples_allocated(other.m_num_samples_allocated)
 				, m_num_samples(other.m_num_samples)
 				, m_sample_size(other.m_sample_size)
 				, m_sample_rate(other.m_sample_rate)
@@ -156,7 +129,7 @@ namespace acl
 			~track_stream()
 			{
 				if (m_allocator != nullptr)
-					m_allocator->deallocate(m_samples, m_sample_size * size_t(m_num_samples_allocated) + k_padding);
+					m_allocator->deallocate(m_samples, m_sample_size * size_t(m_num_samples) + k_padding);
 			}
 
 			track_stream& operator=(const track_stream&) = delete;
@@ -164,7 +137,6 @@ namespace acl
 			{
 				std::swap(m_allocator, rhs.m_allocator);
 				std::swap(m_samples, rhs.m_samples);
-				std::swap(m_num_samples_allocated, rhs.m_num_samples_allocated);
 				std::swap(m_num_samples, rhs.m_num_samples);
 				std::swap(m_sample_size, rhs.m_sample_size);
 				std::swap(m_sample_rate, rhs.m_sample_rate);
@@ -181,7 +153,6 @@ namespace acl
 				{
 					copy.m_allocator = m_allocator;
 					copy.m_samples = reinterpret_cast<uint8_t*>(m_allocator->allocate(m_sample_size * size_t(m_num_samples) + k_padding, 16));
-					copy.m_num_samples_allocated = m_num_samples;
 					copy.m_num_samples = m_num_samples;
 					copy.m_sample_size = m_sample_size;
 					copy.m_sample_rate = m_sample_rate;
@@ -197,12 +168,11 @@ namespace acl
 
 			iallocator*				m_allocator;
 			uint8_t*				m_samples;
-			uint32_t				m_num_samples_allocated;
 			uint32_t				m_num_samples;
 			uint32_t				m_sample_size;
 			float					m_sample_rate;
 
-			animation_track_type8	m_type;
+			animation_track_type8		m_type;
 			track_format8			m_format;
 			uint8_t					m_bit_rate;
 			};
@@ -303,85 +273,37 @@ namespace acl
 		class track_stream_range
 		{
 		public:
-#if defined(ACL_IMPL_ENABLE_WEIGHTED_AVERAGE_CONSTANT_SUB_TRACKS)
-			static track_stream_range RTM_SIMD_CALL from_min_max(rtm::vector4f_arg0 min, rtm::vector4f_arg1 max, rtm::vector4f_arg2 weighted_average)
-			{
-				return track_stream_range(min, max, rtm::vector_sub(max, min), weighted_average);
-			}
-#else
 			static track_stream_range RTM_SIMD_CALL from_min_max(rtm::vector4f_arg0 min, rtm::vector4f_arg1 max)
 			{
-				return track_stream_range(min, max, rtm::vector_sub(max, min));
+				return track_stream_range(min, rtm::vector_sub(max, min));
 			}
-#endif
 
-#if defined(ACL_IMPL_ENABLE_WEIGHTED_AVERAGE_CONSTANT_SUB_TRACKS)
-			static track_stream_range RTM_SIMD_CALL from_min_extent(rtm::vector4f_arg0 min, rtm::vector4f_arg1 extent, rtm::vector4f_arg2 weighted_average)
-			{
-				return track_stream_range(min, rtm::vector_add(min, extent), extent, weighted_average);
-			}
-#else
 			static track_stream_range RTM_SIMD_CALL from_min_extent(rtm::vector4f_arg0 min, rtm::vector4f_arg1 extent)
 			{
-				return track_stream_range(min, rtm::vector_add(min, extent), extent);
+				return track_stream_range(min, extent);
 			}
-#endif
 
 			track_stream_range()
 				: m_min(rtm::vector_zero())
-				, m_max(rtm::vector_zero())
 				, m_extent(rtm::vector_zero())
-#if defined(ACL_IMPL_ENABLE_WEIGHTED_AVERAGE_CONSTANT_SUB_TRACKS)
-				, m_weighted_average(rtm::vector_zero())
-#endif
 			{}
 
 			rtm::vector4f RTM_SIMD_CALL get_min() const { return m_min; }
-			rtm::vector4f RTM_SIMD_CALL get_max() const { return m_max; }
+			rtm::vector4f RTM_SIMD_CALL get_max() const { return rtm::vector_add(m_min, m_extent); }
 
-			rtm::vector4f RTM_SIMD_CALL get_center() const { return rtm::vector_mul_add(m_extent, 0.5F, m_min); }
+			rtm::vector4f RTM_SIMD_CALL get_center() const { return rtm::vector_add(m_min, rtm::vector_mul(m_extent, 0.5F)); }
 			rtm::vector4f RTM_SIMD_CALL get_extent() const { return m_extent; }
 
-			bool is_constant(float threshold) const
-			{
-				// If our error threshold is zero we want to test if we are binary exact
-				// This is used by raw clips, we must preserve the original values
-				if (threshold == 0.0F)
-					return rtm::vector_all_equal(m_min, m_max);
-				else
-					return rtm::vector_all_less_equal(m_extent, rtm::vector_set(threshold));
-			}
-
-#if defined(ACL_IMPL_ENABLE_WEIGHTED_AVERAGE_CONSTANT_SUB_TRACKS)
-			rtm::vector4f RTM_SIMD_CALL get_weighted_average() const { return m_weighted_average; }
-#endif
+			bool is_constant(float threshold) const { return rtm::vector_all_less_than(rtm::vector_abs(m_extent), rtm::vector_set(threshold)); }
 
 		private:
-#if defined(ACL_IMPL_ENABLE_WEIGHTED_AVERAGE_CONSTANT_SUB_TRACKS)
-			track_stream_range(rtm::vector4f_arg0 min, rtm::vector4f_arg1 max, rtm::vector4f_arg2 extent, rtm::vector4f_arg3 weighted_average)
-#else
-			track_stream_range(rtm::vector4f_arg0 min, rtm::vector4f_arg1 max, rtm::vector4f_arg2 extent)
-#endif
+			track_stream_range(rtm::vector4f_arg0 min, rtm::vector4f_arg1 extent)
 				: m_min(min)
-				, m_max(max)
 				, m_extent(extent)
-
-#if defined(ACL_IMPL_ENABLE_WEIGHTED_AVERAGE_CONSTANT_SUB_TRACKS)
-				, m_weighted_average(weighted_average)
-#endif
-			{
-				ACL_ASSERT(rtm::vector_all_greater_equal(max, min), "Max must be greater or equal to min");
-				ACL_ASSERT(rtm::vector_all_greater_equal(extent, rtm::vector_zero()) && rtm::vector_is_finite(extent), "Extent must be positive and finite");
-			}
+			{}
 
 			rtm::vector4f	m_min;
-			rtm::vector4f	m_max;
 			rtm::vector4f	m_extent;
-
-#if defined(ACL_IMPL_ENABLE_WEIGHTED_AVERAGE_CONSTANT_SUB_TRACKS)
-			rtm::vector4f	m_weighted_average;
-#endif
-
 		};
 
 		struct transform_range
@@ -395,8 +317,6 @@ namespace acl
 
 		struct transform_streams
 		{
-			rtm::qvvf default_value					= rtm::qvv_identity();
-
 			segment_context* segment				= nullptr;
 			uint32_t bone_index						= k_invalid_track_index;
 			uint32_t parent_bone_index				= k_invalid_track_index;
@@ -413,14 +333,11 @@ namespace acl
 			bool is_scale_constant					= false;
 			bool is_scale_default					= false;
 
-			uint8_t padding[2]						= {};
-
 			bool is_stripped_from_output() const { return output_index == k_invalid_track_index; }
 
 			transform_streams duplicate() const
 			{
 				transform_streams copy;
-				copy.default_value = default_value;
 				copy.segment = segment;
 				copy.bone_index = bone_index;
 				copy.parent_bone_index = parent_bone_index;
@@ -438,8 +355,6 @@ namespace acl
 			}
 		};
 	}
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }
 
 ACL_IMPL_FILE_PRAGMA_POP

@@ -26,7 +26,6 @@
 
 // Included only once from database_streamer.h
 
-#include "acl/version.h"
 #include "acl/core/bitset.h"
 #include "acl/core/impl/compressed_headers.h"
 #include "acl/decompression/database/impl/database_context.h"
@@ -35,8 +34,6 @@
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	namespace acl_impl
 	{
 		inline streaming_request_id make_request_id(uint32_t request_index, uint32_t generation_id)
@@ -220,6 +217,4 @@ namespace acl
 
 		return acl_impl::make_request_id(request_index, generation_id);
 	}
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }

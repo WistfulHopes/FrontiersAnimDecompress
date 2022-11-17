@@ -26,7 +26,6 @@
 
 // Included only once from compress.h
 
-#include "acl/version.h"
 #include "acl/core/buffer_tag.h"
 #include "acl/core/compressed_tracks.h"
 #include "acl/core/compressed_tracks_version.h"
@@ -43,7 +42,6 @@
 #include "acl/compression/impl/convert_rotation_streams.h"
 #include "acl/compression/impl/compact_constant_streams.h"
 #include "acl/compression/impl/normalize_streams.h"
-#include "acl/compression/impl/optimize_looping.h"
 #include "acl/compression/impl/quantize_streams.h"
 #include "acl/compression/impl/segment_streams.h"
 #include "acl/compression/impl/write_segment_data.h"
@@ -52,58 +50,12 @@
 #include "acl/compression/impl/write_sub_track_types.h"
 #include "acl/compression/impl/write_track_metadata.h"
 
-#include <rtm/quatf.h>
-#include <rtm/vector4f.h>
-
-#if defined(ACL_USE_SJSON)
-#include <sjson/writer.h>
-#endif
-
 #include <cstdint>
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	namespace acl_impl
 	{
-		inline bool has_trivial_default_values(const track_array_qvvf& track_list, additive_clip_format8 additive_format, const clip_context& lossy_clip_context)
-		{
-			// Additive clips and regular clips can have zero/one scale and be trivial
-			bool all_scales_zero = true;
-			bool all_scales_one = true;
-
-			const rtm::vector4f zero = rtm::vector_zero();
-			const rtm::vector4f one = rtm::vector_set(1.0F);
-
-			for (const track_qvvf& track : track_list)
-			{
-				const track_desc_transformf& desc = track.get_description();
-
-				if (!rtm::quat_near_identity(desc.default_value.rotation, 0.0F))
-					return false;	// Not the identity
-
-				if (!rtm::vector_all_near_equal3(desc.default_value.translation, zero, 0.0F))
-					return false;	// Not zero
-
-				if (!rtm::vector_all_near_equal3(desc.default_value.scale, zero, 0.0F))
-					all_scales_zero = false;	// Not zero
-				if (!rtm::vector_all_near_equal3(desc.default_value.scale, one, 0.0F))
-					all_scales_one = false;		// Not one
-			}
-
-			if (lossy_clip_context.has_scale)
-			{
-				if (additive_format == additive_clip_format8::additive1 && !all_scales_zero)
-					return false;	// Not zero
-				else if (!all_scales_one)
-					return false;	// Not one
-			}
-
-			// Every default value was trivial
-			return true;
-		}
-
 		inline error_result compress_transform_track_list(iallocator& allocator, const track_array_qvvf& track_list, compression_settings settings,
 			const track_array_qvvf* additive_base_track_list, additive_clip_format8 additive_format,
 			compressed_tracks*& out_compressed_tracks, output_stats& out_stats)
@@ -112,7 +64,7 @@ namespace acl
 			if (result.any())
 				return result;
 
-#if defined(ACL_USE_SJSON)
+#if defined(SJSON_CPP_WRITER)
 			scope_profiler compression_time;
 #endif
 
@@ -171,9 +123,6 @@ namespace acl
 			if (is_additive && !initialize_clip_context(allocator, *additive_base_track_list, settings, additive_format, additive_base_clip_context))
 				return error_result("Some base samples are not finite");
 
-			// Wrap instead of clamp if we loop
-			optimize_looping(lossy_clip_context, track_list, settings);
-
 			// Convert our rotations if we need to
 			convert_rotation_streams(allocator, lossy_clip_context, settings.rotation_format);
 
@@ -203,10 +152,7 @@ namespace acl
 				normalize_segment_streams(lossy_clip_context, range_reduction);
 			}
 
-			// Find how many bits we need per sub-track and quantize everything
 			quantize_streams(allocator, lossy_clip_context, settings, raw_clip_context, additive_base_clip_context, out_stats);
-
-			const bool has_trivial_defaults = has_trivial_default_values(track_list, additive_format, lossy_clip_context);
 
 			uint32_t num_output_bones = 0;
 			uint32_t* output_bone_mapping = create_output_track_mapping(allocator, track_list, num_output_bones);
@@ -339,8 +285,8 @@ namespace acl
 			header->algorithm_type = algorithm_type8::uniformly_sampled;
 			header->track_type = track_list.get_track_type();
 			header->num_tracks = num_output_bones;
-			header->num_samples = num_output_bones != 0 ? lossy_clip_context.num_samples : 0;
-			header->sample_rate = num_output_bones != 0 ? lossy_clip_context.sample_rate : 0.0F;
+			header->num_samples = num_output_bones != 0 ? track_list.get_num_samples_per_track() : 0;
+			header->sample_rate = num_output_bones != 0 ? track_list.get_sample_rate() : 0.0F;
 			header->set_rotation_format(settings.rotation_format);
 			header->set_translation_format(settings.translation_format);
 			header->set_scale_format(settings.scale_format);
@@ -348,8 +294,6 @@ namespace acl
 			// Our default scale is 1.0 if we have no additive base or if we don't use 'additive1', otherwise it is 0.0
 			header->set_default_scale(!is_additive || additive_format != additive_clip_format8::additive1 ? 1 : 0);
 			header->set_has_database(false);
-			header->set_has_trivial_default_values(has_trivial_defaults);
-			header->set_is_wrap_optimized(lossy_clip_context.looping_policy == sample_looping_policy::wrap);
 			header->set_has_metadata(metadata_size != 0);
 
 			// Write our transform tracks header
@@ -511,7 +455,7 @@ namespace acl
 			(void)buffer_start;
 #endif
 
-#if defined(ACL_USE_SJSON)
+#if defined(SJSON_CPP_WRITER)
 			compression_time.stop();
 
 			if (out_stats.logging != stat_logging::none)
@@ -526,6 +470,4 @@ namespace acl
 			return error_result();
 		}
 	}
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }

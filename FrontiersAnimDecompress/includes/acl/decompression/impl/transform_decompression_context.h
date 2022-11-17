@@ -24,7 +24,6 @@
 // SOFTWARE.
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "acl/version.h"
 #include "acl/core/bitset.h"
 #include "acl/core/compressed_tracks.h"
 #include "acl/core/compressed_tracks_version.h"
@@ -46,11 +45,9 @@ ACL_IMPL_FILE_PRAGMA_PUSH
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	namespace acl_impl
 	{
-		struct persistent_transform_decompression_context_v0
+		struct alignas(64) persistent_transform_decompression_context_v0
 		{
 			// Clip related data								//   offsets
 			// Only member used to detect if we are initialized, must be first
@@ -61,7 +58,6 @@ namespace acl
 
 			uint32_t clip_hash;									//   8 |  16
 
-			// Only used when the wrap loop policy isn't supported
 			float clip_duration;								//  12 |  20
 
 			rotation_format8 rotation_format;					//  16 |  24
@@ -71,12 +67,9 @@ namespace acl
 			uint8_t has_scale;									//  19 |  27
 			uint8_t has_segments;								//  20 |  28
 
-			uint8_t looping_policy;								//  21 |  29
-
-			uint8_t padding0[20];								//  22 |  30
+			uint8_t padding0[22];								//  21 |  29
 
 			// Seeking related data
-			uint8_t rounding_policy;							//  42 |  50
 			uint8_t uses_single_segment;						//  43 |  51
 
 			float sample_time;									//  44 |  52
@@ -101,8 +94,6 @@ namespace acl
 
 			const compressed_tracks* get_compressed_tracks() const { return tracks; }
 			compressed_tracks_version16 get_version() const { return tracks->get_version(); }
-			sample_looping_policy get_looping_policy() const { return static_cast<sample_looping_policy>(looping_policy); }
-			sample_rounding_policy get_rounding_policy() const { return static_cast<sample_rounding_policy>(rounding_policy); }
 			bool is_initialized() const { return tracks != nullptr; }
 			void reset() { tracks = nullptr; }
 		};
@@ -119,7 +110,6 @@ namespace acl
 			static constexpr range_reduction_flags8 get_range_reduction_flag() { return range_reduction_flags8::translations; }
 			static constexpr vector_format8 get_vector_format(const persistent_transform_decompression_context_v0& context) { return context.translation_format; }
 			static constexpr bool is_vector_format_supported(vector_format8 format) { return decompression_settings_type::is_translation_format_supported(format); }
-			static constexpr bool is_per_track_rounding_supported() { return decompression_settings_type::is_per_track_rounding_supported(); }
 		};
 
 		template<class decompression_settings_type>
@@ -129,7 +119,6 @@ namespace acl
 			static constexpr range_reduction_flags8 get_range_reduction_flag() { return range_reduction_flags8::scales; }
 			static constexpr vector_format8 get_vector_format(const persistent_transform_decompression_context_v0& context) { return context.scale_format; }
 			static constexpr bool is_vector_format_supported(vector_format8 format) { return decompression_settings_type::is_scale_format_supported(format); }
-			static constexpr bool is_per_track_rounding_supported() { return decompression_settings_type::is_per_track_rounding_supported(); }
 		};
 
 		// Returns the statically known number of rotation formats supported by the decompression settings
@@ -190,8 +179,6 @@ namespace acl
 				: format == rotation_format8::quatf_full ? (interpolation_alpha > 0.0F && interpolation_alpha < 1.0F) : true;
 		}
 	}
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }
 
 #if defined(RTM_COMPILER_MSVC)

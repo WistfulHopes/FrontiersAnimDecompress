@@ -26,14 +26,10 @@
 
 // Included only once from decompress.h
 
-#include "acl/version.h"
-
 #include <type_traits>
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	namespace acl_impl
 	{
 		//////////////////////////////////////////////////////////////////////////
@@ -51,9 +47,6 @@ namespace acl
 		: m_context()
 	{
 		m_context.reset();
-
-		// Deprecation checks
-		static_assert(decompression_settings_type::normalize_rotations(), "Override get_rotation_normalization_policy instead; to be removed in v3.0");
 	}
 
 	template<class decompression_settings_type>
@@ -109,25 +102,10 @@ namespace acl
 	}
 
 	template<class decompression_settings_type>
-	inline void decompression_context<decompression_settings_type>::set_looping_policy(sample_looping_policy policy)
-	{
-		ACL_ASSERT(m_context.is_initialized(), "Context is not initialized");
-		version_impl_type::template set_looping_policy<decompression_settings_type>(m_context, policy);
-	}
-
-	template<class decompression_settings_type>
-	inline sample_looping_policy decompression_context<decompression_settings_type>::get_looping_policy() const
-	{
-		ACL_ASSERT(m_context.is_initialized(), "Context is not initialized");
-		return m_context.get_looping_policy();
-	}
-
-	template<class decompression_settings_type>
 	inline void decompression_context<decompression_settings_type>::seek(float sample_time, sample_rounding_policy rounding_policy)
 	{
 		ACL_ASSERT(m_context.is_initialized(), "Context is not initialized");
 		ACL_ASSERT(rtm::scalar_is_finite(sample_time), "Invalid sample time");
-		ACL_ASSERT(rounding_policy != sample_rounding_policy::per_track || decompression_settings_type::is_per_track_rounding_supported(), "Per track rounding must be enabled");
 
 		if (!m_context.is_initialized())
 			return;	// Context is not initialized
@@ -160,6 +138,4 @@ namespace acl
 
 		version_impl_type::template decompress_track<decompression_settings_type>(m_context, track_index, writer);
 	}
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }

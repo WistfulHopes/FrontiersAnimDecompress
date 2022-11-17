@@ -1,5 +1,4 @@
 #pragma once
-
 ////////////////////////////////////////////////////////////////////////////////
 // The MIT License (MIT)
 //
@@ -26,19 +25,15 @@
 
 // Included only once from track_desc.h
 
-#include "acl/version.h"
 #include "acl/core/error_result.h"
 #include "acl/core/track_types.h"
 
-#include <rtm/qvvf.h>
 #include <rtm/scalarf.h>
 
 #include <cstdint>
 
 namespace acl
 {
-	ACL_IMPL_VERSION_NAMESPACE_BEGIN
-
 	inline error_result track_desc_scalarf::is_valid() const
 	{
 		if (precision < 0.0F || !rtm::scalar_is_finite(precision))
@@ -64,14 +59,6 @@ namespace acl
 		if (constant_scale_threshold < 0.0F || !rtm::scalar_is_finite(constant_scale_threshold))
 			return error_result("Invalid constant_scale_threshold");
 
-		if (!rtm::qvv_is_finite(default_value))
-			return error_result("Invalid default_value must be finite");
-
-		if (!rtm::quat_is_normalized(default_value.rotation))
-			return error_result("Description default_value rotation is not normalized");
-
 		return error_result();
 	}
-
-	ACL_IMPL_VERSION_NAMESPACE_END
 }

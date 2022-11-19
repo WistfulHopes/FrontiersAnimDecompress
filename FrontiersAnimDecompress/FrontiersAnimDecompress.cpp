@@ -252,11 +252,6 @@ bool compress(char* filename)
 		{
 			uint32_t file_pos = 0xC + j * track_count * sizeof rtm::qvvf + i * sizeof rtm::qvvf;
 			rtm::qvvf transform = *(rtm::qvvf*)&buffer[file_pos];
-			rtm::qvvf transform_default = rtm::qvvf();
-			if (std::memcmp((void*)&transform.scale, (void*)&transform_default.scale, sizeof (__m128)) == 0)
-			{
-				transform.scale = _mm_set_ps(1, 1, 1, 1);
-			}
 			track.push_back(transform);
 		}
 

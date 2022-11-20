@@ -75,9 +75,9 @@ class MoveArray:
 class HedgeEngineSkelExport(bpy.types.Operator, ExportHelper):
     bl_idname = "custom_export_scene.hedgeengskel"
     bl_label = "export"
-    filename_ext = ".skl.pxd"
+    filename_ext = ".pxd"
     filter_glob: StringProperty(
-            default="*.skl.pxd",
+            default="*.pxd",
             options={'HIDDEN'},
             )
     filepath: StringProperty(subtype='FILE_PATH',)
@@ -106,6 +106,8 @@ class HedgeEngineSkelExport(bpy.types.Operator, ExportHelper):
             CurFile.write(Null.to_bytes(8, 'little'))
             
             NameOffset = ParentOffset + (len(Arm.pose.bones) + 1) * 2
+            if NameOffset % 0x10 != 0:
+                NameOffset += 0x10 - NameOffset % 0x10
             
             CurFile.write(NameOffset.to_bytes(8, 'little'))
             CurFile.write(len(Arm.pose.bones).to_bytes(8, 'little'))
@@ -122,8 +124,11 @@ class HedgeEngineSkelExport(bpy.types.Operator, ExportHelper):
             for x in range(len(Arm.pose.bones)):
                 ParentIndex = Array.parent_indices[x].to_bytes(2, 'little')
                 CurFile.write(ParentIndex)
-            CurFile.write(Null.to_bytes(2, 'little'))
-            
+
+            if CurFile.tell() % 0x10 != 0:
+                for x in range(0x10 - CurFile.tell() % 0x10):
+                    CurFile.write(Null.to_bytes(1, 'little'))
+                
             NameDataOffset = MatrixOffset + len(Arm.pose.bones) * 0x30
             
             for x in range(len(Arm.pose.bones)):
@@ -134,7 +139,7 @@ class HedgeEngineSkelExport(bpy.types.Operator, ExportHelper):
                 CurFile.write(struct.pack('<f', Array.transform[x].pos[0]))
                 CurFile.write(struct.pack('<f', Array.transform[x].pos[1]))
                 CurFile.write(struct.pack('<f', Array.transform[x].pos[2]))
-                CurFile.write(Null.to_bytes(4, 'little'))
+                CurFile.write(struct.pack('<f', 0))
                 CurFile.write(struct.pack('<f', Array.transform[x].rot[0]))
                 CurFile.write(struct.pack('<f', Array.transform[x].rot[1]))
                 CurFile.write(struct.pack('<f', Array.transform[x].rot[2]))
@@ -149,13 +154,14 @@ class HedgeEngineSkelExport(bpy.types.Operator, ExportHelper):
             for x in range(len(Arm.pose.bones)):
                 CurFile.write(Array.name[x])
                 StringTableSize += len(Array.name[x])
-                
-            StringTableSize += 1
+            
+            if CurFile.tell() % 4 != 0:
+                for x in range(4 - CurFile.tell() % 4):
+                    CurFile.write(Null.to_bytes(1, 'little'))
+                    StringTableSize += 1
             
             OffsetTableSize = 0
-            
-            CurFile.write(Null.to_bytes(1, 'little'))
-            
+           
             bit = 66
             CurFile.write(bit.to_bytes(1, 'little'))
             bit = 72
@@ -181,7 +187,13 @@ class HedgeEngineSkelExport(bpy.types.Operator, ExportHelper):
                 OffsetTableSize += 1
             
             CurFile.write(Null.to_bytes(1, 'little'))
+            OffsetTableSize += 1
             
+            if CurFile.tell() % 4 != 0:
+                for x in range(4 - CurFile.tell() % 4):
+                    CurFile.write(Null.to_bytes(1, 'little'))
+                    OffsetTableSize += 1
+
             CurFile.close()
             del CurFile
             
@@ -210,7 +222,7 @@ class HedgeEngineSkelExport(bpy.types.Operator, ExportHelper):
         return {'FINISHED'}
     
 def menu_func_export(self, context):
-    self.layout.operator(HedgeEngineSkelExport.bl_idname, text="Hedgehog Engine Skeleton Export (.skl.pxd)")
+    self.layout.operator(HedgeEngineSkelExport.bl_idname, text="Hedgehog Engine Skeleton Export (.pxd)")
         
 def register():
     bpy.utils.register_class(HedgeEngineSkelExport)

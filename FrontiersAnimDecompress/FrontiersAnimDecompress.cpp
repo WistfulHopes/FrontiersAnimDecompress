@@ -299,9 +299,67 @@ bool compress(char* filename)
 		std::cout << "Cannot open file!" << std::endl;
 		return false;
 	}
+
+	//BINA/DATA header
+	unsigned int num = 0;
+	wf.write("BINA210L", 8);
+	num = out_compressed_tracks->get_size() + 0x80 + 0x10 - out_compressed_tracks->get_size() % 0x10 + 0xC;;
+	wf.write((char*)&num, 0x4);
+	num = 1;
+	wf.write((char*)&num, 0x4);
+	wf.write("DATA", 4);
+	num = out_compressed_tracks->get_size() + 0x70 + 0x10 - out_compressed_tracks->get_size() % 0x10 + 0xC;;
+	wf.write((char*)&num, 0x4);
+	num -= 0x34;
+	wf.write((char*)&num, 0x4);
+	num = 0;
+	wf.write((char*)&num, 0x4);
+	num = 4;
+	wf.write((char*)&num, 0x4);
+	num = 0x18;
+	wf.write((char*)&num, 0x4);
+	num = 0;
+	for (int i = 0; i < 6; i++)
+		wf.write((char*)&num, 0x4);
+
+	//PXAN header
+	wf.write("NAXP", 4);
+	num = 512;
+	wf.write((char*)&num, 0x4);
+	num = 2048;
+	wf.write((char*)&num, 0x4);
+	num = 0;
+	wf.write((char*)&num, 0x4);
+	num = 24;
+	wf.write((char*)&num, 0x4);
+	num = 0;
+	wf.write((char*)&num, 0x4);
+	wf.write((char*)&duration, 4);
+	wf.write((char*)&sample_count, 4);
+	wf.write((char*)&track_count, 4);
+	num = 0;
+	wf.write((char*)&num, 0x4);
+	num = 64;
+	wf.write((char*)&num, 0x4);
+	num = 0;
+	wf.write((char*)&num, 0x4);
+	num = out_compressed_tracks->get_size() + 0x70 + 0x10 - out_compressed_tracks->get_size() % 0x10;
+	wf.write((char*)&num, 0x4);
+	num = 0;
+	wf.write((char*)&num, 0x4);
+	wf.write((char*)&num, 0x4);
+	wf.write((char*)&num, 0x4);
 	wf.write((char*)out_compressed_tracks, out_compressed_tracks->get_size());
-	
-	std::cout << "File written" << std::endl;
+	num = 0;
+	for (unsigned int i = 0; i < 0x10 - out_compressed_tracks->get_size() % 0x10; i++)
+		wf.write((char*)&num, 1);
+	num = 0xFFFFFFFF;
+	wf.write((char*)&num, 0x4);
+	num = 0;
+	wf.write((char*)&num, 0x4);
+	num = 0x00424644;
+	wf.write((char*)&num, 0x4);
+	wf.close();
 
 	return true;
 }

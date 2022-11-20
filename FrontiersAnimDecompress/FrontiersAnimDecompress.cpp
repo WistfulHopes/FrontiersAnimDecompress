@@ -226,6 +226,7 @@ bool decompress(char* filename)
 	return true;
 }
 
+#pragma optimize("", off) 
 bool compress(char* filename)
 {
 	const char* buffer = nullptr;
@@ -360,9 +361,12 @@ bool compress(char* filename)
 	num = 0x00424644;
 	wf.write((char*)&num, 0x4);
 	wf.close();
+	
+	std::cout << "Wrote file" << std::endl;
 
 	return true;
 }
+#pragma optimize("", on) 
 
 int main(int argc, char* argv[])
 {

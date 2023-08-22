@@ -90,7 +90,7 @@ class HedgeEngineSkelExport(bpy.types.Operator, ExportHelper):
     files: CollectionProperty(type=bpy.types.PropertyGroup)
     
     use_yx_orientation: BoolProperty(
-        name="Reorient Bones",
+        name="Use YX Bone Orientation",
         description="If your skeleton was imported from XZ to YX to function better in Blender, use this option to switch bones back from YX to XZ (important for in-game IK)",
         default=False,
         )

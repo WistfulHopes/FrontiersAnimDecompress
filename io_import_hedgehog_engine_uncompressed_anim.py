@@ -98,13 +98,23 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
                 Arm.animation_data_create()
                 action = bpy.data.actions.new(os.path.basename(animfile.name))
                 Arm.animation_data.action = action
-
+                
+                loopCheck = False
+                if self.loop_anim == "loopYes":
+                    loopCheck = True
+                elif self.loop_anim == "loopAuto":
+                    if "_loop" in animfile.name:
+                        loopCheck = True
+                
                 PlayRate = struct.unpack('<f', CurFile.read(0x4))[0]
                 FrameCount = int.from_bytes(CurFile.read(4),byteorder='little')
                 BoneCount = int.from_bytes(CurFile.read(4),byteorder='little')
 
                 Scene.render.fps = int((FrameCount - 1) / PlayRate)
-                Scene.frame_start = 0
+                if loopCheck:
+                    Scene.frame_start = 1
+                else:
+                    Scene.frame_start = 0
                 Scene.frame_end = FrameCount - 1
 
                 CurrentFrame = Scene.frame_current

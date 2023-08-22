@@ -55,8 +55,14 @@ class BoneTransform:
             Mat = Bone.parent.matrix_local.inverted() @ Bone.matrix_local
         Pos = Mat.translation
         Rot = Mat.to_quaternion()
-        self.pos = (Pos[0], Pos[1], Pos[2])
-        self.rot = (Rot[1], Rot[2], Rot[3], Rot[0])
+        if self.use_yx_orientation:
+            if not Bone.parent:
+                Rot @= mathutils.Quaternion((0.5,0.5,0.5,0.5))
+            self.pos = (Pos[1], Pos[2], Pos[0])
+            self.rot = (Rot[2], Rot[3], Rot[1], Rot[0])
+        else:
+            self.pos = (Pos[0], Pos[1], Pos[2])
+            self.rot = (Rot[1], Rot[2], Rot[3], Rot[0])
 
 class MoveArray:    
     parent_indices = []
@@ -83,8 +89,18 @@ class HedgeEngineSkelExport(bpy.types.Operator, ExportHelper):
     filepath: StringProperty(subtype='FILE_PATH',)
     files: CollectionProperty(type=bpy.types.PropertyGroup)
     
+    use_yx_orientation: BoolProperty(
+        name="Reorient Bones",
+        description="If your skeleton was imported from XZ to YX to function better in Blender, use this option to switch bones back from YX to XZ (important for in-game IK)",
+        default=False,
+        )
+    
     def draw(self, context):
-        pass
+        layout = self.layout
+        uiBoneBox = layout.box()
+        uiBoneBox.label(text="Armature Settings",icon="ARMATURE_DATA")
+        uiBoneBox.prop(self, "use_yx_orientation")
+        
     def execute(self, context):
         Arm = bpy.context.active_object
         Scene = bpy.context.scene

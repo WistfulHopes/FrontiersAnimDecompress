@@ -49,13 +49,13 @@ def offset_table(offset):
 class BoneTransform:
     pos = ()
     rot = ()
-    def __init__(self, Arm, Bone):
+    def __init__(self, Arm, Bone, useYX):
         Mat = Bone.matrix_local
         if Bone.parent:
             Mat = Bone.parent.matrix_local.inverted() @ Bone.matrix_local
         Pos = Mat.translation
         Rot = Mat.to_quaternion()
-        if self.use_yx_orientation:
+        if useYX:
             if not Bone.parent:
                 Rot @= mathutils.Quaternion((0.5,0.5,0.5,0.5))
             self.pos = (Pos[1], Pos[2], Pos[0])
@@ -69,14 +69,14 @@ class MoveArray:
     name = []
     transform = []
     
-    def __init__(self, Arm):
+    def __init__(self, Arm, useYX):
         for x in range(len(Arm.pose.bones)):
             if (Arm.pose.bones[x].parent):
                 self.parent_indices.append(Arm.pose.bones.find(Arm.pose.bones[x].parent.name))
             else:
                 self.parent_indices.append(65535)
             self.name.append(bytes(Arm.pose.bones[x].name, 'ascii') + b'\x00')
-            self.transform.append(BoneTransform(Arm, Arm.pose.bones[x].bone))
+            self.transform.append(BoneTransform(Arm, Arm.pose.bones[x].bone,useYX))
 
 class HedgeEngineSkelExport(bpy.types.Operator, ExportHelper):
     bl_idname = "custom_export_scene.hedgeengskel"
@@ -111,7 +111,8 @@ class HedgeEngineSkelExport(bpy.types.Operator, ExportHelper):
             
             CurFile.write(magic)
             CurFile.write(struct.pack('<i', 512))
-            Array = MoveArray(Arm)
+            useYX = self.use_yx_orientation
+            Array = MoveArray(Arm, useYX)
             
             ParentOffset = 104
             Null = 0

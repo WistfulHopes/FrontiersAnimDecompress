@@ -240,7 +240,7 @@ bool compress(char* filename)
 
 	float duration = *(float*)&buffer[0];
 	uint32_t sample_count = *(uint32_t*)&buffer[4];
-	float sample_rate = (float)sample_count / duration;
+	float sample_rate = (float)(sample_count - 1) / duration;
 	uint32_t track_count = *(uint32_t*)&buffer[8];
 
 	ansi_allocator allocator;

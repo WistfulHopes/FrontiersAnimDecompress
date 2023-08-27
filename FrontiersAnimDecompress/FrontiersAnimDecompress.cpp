@@ -202,8 +202,25 @@ bool decompress(char* filename)
 	output.bone_count = compressed_anim->get_num_tracks();
 	output.all_tracks = all_tracks;
 
-	char* out_name = (char*)malloc(strlen(filename) + 7);
-	strcpy(out_name, filename);
+	char* out_name;
+	char* suffix_pxd = strstr(filename, ".pxd");
+	if (suffix_pxd != NULL && strcmp(suffix_pxd, ".pxd") == 0) {
+		char* suffix_anm_pxd = strstr(filename, ".anm.pxd");
+		int new_len;
+		if (suffix_anm_pxd != NULL && strcmp(suffix_anm_pxd, ".anm.pxd") == 0) {
+			new_len = strlen(filename) - strlen(".anm.pxd");
+		}
+		else {
+			new_len = strlen(filename) - strlen(".pxd");
+		}
+		out_name = (char*)malloc(new_len + 1 + strlen(".outanim"));
+		strncpy(out_name, filename, new_len);
+		out_name[new_len] = '\0';
+	}
+	else {
+		out_name = (char*)malloc(strlen(filename) + 1);
+		strcpy(out_name, filename);
+	}
 	strcat(out_name, ".outanim");
 	
 	std::ofstream wf(out_name, std::ios::out | std::ios::binary);
@@ -291,8 +308,18 @@ bool compress(char* filename)
 	
 	std::cout << "Compressed tracks" << std::endl;
 
-	char* out_name = (char*)malloc(strlen(filename) + 7);
-	strcpy(out_name, filename);
+	char* out_name;
+	char* suffix_outanim = strstr(filename, ".outanim");
+	if (suffix_outanim != NULL && strcmp(suffix_outanim, ".outanim") == 0) {
+		int new_len = strlen(filename) - strlen(".outanim");
+		out_name = (char*)malloc(new_len + 1 + strlen(".anm.pxd"));
+		strncpy(out_name, filename, new_len);
+		out_name[new_len] = '\0';
+	}
+	else {
+		out_name = (char*)malloc(strlen(filename) + 1 + strlen(".anm.pxd"));
+		strcpy(out_name, filename);
+	}
 	strcat(out_name, ".anm.pxd");
 	
 	std::ofstream wf(out_name, std::ios::out | std::ios::binary);

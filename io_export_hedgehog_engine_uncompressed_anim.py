@@ -38,9 +38,9 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
     
     scale_correct: EnumProperty(
         items=[
-            ("accurate", "Accurate", "Correct bone relocations as a result of parent scaling (slower)", 1),
+            ("accurate", "Accurate", "Make output animation appear exactly as it does in the viewport by correcting bone offests from parent scaling (slower). Ensure that all your bones' scale inheritance mode is set to \"Aligned\" before exporting", 1),
             #("fast", "Fast", "Correct bone relocations, but don't update scene during relocations (slightly less accurate but visibly serviceable)", 2), #Not yet working right
-            ("legacy", "Legacy", "Import using the original plugin's method (inaccurate, but good for revisiting old .outanim exports)", 3),
+            ("legacy", "Legacy", "Export using the original plugin's method (inaccurate display, but can (potentially) speed up the process of batch retargets if you know what you're doing. Use accurate mode wherever possible", 3),
             ],
         name="Scale Mode",
         description="Determine how the scale data in the animation is saved",
@@ -48,7 +48,7 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
         )
     use_yx_orientation: BoolProperty(
         name="Use YX Bone Orientation",
-        description="If your current skeleton uses YX orientation but your target skeleton uses XZ, enable this option to convert the animation from Blender's bone orientation",
+        description="If your current skeleton uses YX orientation but your target skeleton uses XZ, enable this option to convert the animation to utilize XZ orientation",
         default=False,
         )
 

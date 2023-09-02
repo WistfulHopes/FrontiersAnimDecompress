@@ -90,7 +90,7 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
             # Corrects bone positions as a result of scaling; should be used wherever possible
             if self.scale_correct == "accurate":
                 for x in range(Scene.frame_end - Scene.frame_start + 1):
-                    Scene.frame_set(x)
+                    Scene.frame_set(Scene.frame_start + x)
                     
                     # Set up dictionaries
                     BoneMats = {}
@@ -162,7 +162,7 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
             # Method used in original plugin. Not recommended if scaling is used
             elif self.scale_correct == "legacy":
                 for x in range(Scene.frame_end - Scene.frame_start + 1):
-                    Scene.frame_set(x)
+                    Scene.frame_set(Scene.frame_start + x)
                     for y in range(len(Arm.pose.bones)):
                         Bone = Arm.pose.bones[y]
                         if Bone.parent:

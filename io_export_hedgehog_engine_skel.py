@@ -47,9 +47,9 @@ def offset_table(offset):
     return offset_bits + offset_bits_2
         
 class BoneTransform:
-    pos = ()
-    rot = ()
     def __init__(self, Arm, Bone, useYX):
+        self.pos = ()
+        self.rot = ()
         Mat = Bone.matrix_local
         if Bone.parent:
             Mat = Bone.parent.matrix_local.inverted() @ Bone.matrix_local
@@ -64,12 +64,11 @@ class BoneTransform:
             self.pos = (Pos[0], Pos[1], Pos[2])
             self.rot = (Rot[1], Rot[2], Rot[3], Rot[0])
 
-class MoveArray:    
-    parent_indices = []
-    name = []
-    transform = []
-    
+class MoveArray:
     def __init__(self, Arm, useYX):
+        self.parent_indices = []
+        self.name = []
+        self.transform = []
         for x in range(len(Arm.pose.bones)):
             if (Arm.pose.bones[x].parent):
                 self.parent_indices.append(Arm.pose.bones.find(Arm.pose.bones[x].parent.name))

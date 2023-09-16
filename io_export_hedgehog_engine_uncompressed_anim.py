@@ -39,13 +39,30 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
     scale_correct: EnumProperty(
         items=[
             ("accurate", "Accurate", "Make output animation appear exactly as it does in the viewport by correcting bone offests from parent scaling (slower). Ensure that all your bones' scale inheritance mode is set to \"Aligned\" before exporting", 1),
-            #("fast", "Fast", "Correct bone relocations, but don't update scene during relocations (slightly less accurate but visibly serviceable)", 2), #Not yet working right
             ("legacy", "Legacy", "Export using the original plugin's method (inaccurate display, but can (potentially) speed up the process of batch retargets if you know what you're doing. Use accurate mode wherever possible", 3),
             ],
         name="Scale Mode",
         description="Determine how the scale data in the animation is saved",
         default="accurate",
         )
+        
+    use_scale_factor: EnumProperty(
+        items=[
+            ("none", "None", "Don't scale bone positions; ignore the skeleton object's scale and use the pose-space values", 0),
+            ("object", "Object", "Scale the bone positions with the skeleton object's scale so the exported animation looks closer to what it does in the viewport (not recommended for non-uniform scales)", 1),
+            ("manual", "Manual", "Manually set the factor to scale the positions by", 2),
+            ],
+        name="Scale Type",
+        description="Scale the bone positions in your animation by a factor from the origin. Useful for animation conversions from animations that need skeletons at a specific scale (NOTE: Does not affect the scale of individual bones)",
+        default="none",
+        )
+        
+    scale_factor_value: FloatProperty(
+        name="Factor",
+        description="Factor to scale bone positions",
+        default=1.0,
+        )
+        
     use_yx_orientation: BoolProperty(
         name="Use YX Bone Orientation",
         description="If your current skeleton uses YX orientation but your target skeleton uses XZ, enable this option to convert the animation to utilize XZ orientation",
@@ -59,15 +76,31 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
         uiScaleCorrectRow = uiBoneBox.row()
         uiScaleCorrectRow.label(text="Scale Mode:")
         uiScaleCorrectRow.prop(self, "scale_correct", text="")
+        
+        uiUseScaleFactorRow = uiBoneBox.row()
+        uiUseScaleFactorRow.label(text="Position Scale:")
+        uiUseScaleFactorRow.prop(self, "use_scale_factor", text="")
+        
+        uiScaleFactorValueRow = uiBoneBox.row()
+        uiScaleFactorValueRow.label(text="Scale Factor:")
+        uiScaleFactorValueRow.prop(self, "scale_factor_value", text="")
+        
+        if self.use_scale_factor == "manual":
+            scaleFactorEnable = True
+        else:
+            scaleFactorEnable = False
+        
+        uiScaleFactorValueRow.enabled = scaleFactorEnable
 
         uiOrientationRow = uiBoneBox.row()
-        uiOrientationRow.prop(self, "use_yx_orientation",)
+        uiOrientationRow.prop(self, "use_yx_orientation")
         
     def execute(self, context):
         Arm = bpy.context.active_object
         if not Arm:
             raise ValueError("No active object. Please select an armature as your active object.")
         Scene = bpy.context.scene
+        objectScale = Arm.scale.copy()
         
         if Arm.type == 'ARMATURE':
             CurFile = open(self.filepath,"wb")
@@ -144,6 +177,10 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
 
                         tmpQuat = (ParentMat.inverted() @ Bone.matrix.copy()).to_quaternion()
                         tmpPos = (ParentMat.inverted() @ mathutils.Matrix.Translation(Bone.matrix.translation)).translation
+                        if self.use_scale_factor == "manual":
+                            tmpPos *= self.scale_factor_value
+                        elif self.use_scale_factor == "object":
+                            tmpPos = mathutils.Vector((tmpPos[0]*objectScale[0],tmpPos[1]*objectScale[1],tmpPos[2]*objectScale[2]))
                         tmpScl = BoneScales[Bone.name]
                         
                         if self.use_yx_orientation:
@@ -173,47 +210,45 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
                             else:
                                 Mat = Arm.convert_space(pose_bone=Bone,matrix = Bone.matrix_basis,from_space='LOCAL',to_space='POSE')
                         
+                        
+                        tmpQuat = Mat.to_quaternion()
+                        tmpPos = Mat.translation
+                        if self.use_scale_factor == "manual":
+                            tmpPos *= self.scale_factor_value
+                        elif self.use_scale_factor == "object":
+                            tmpPos = mathutils.Vector((tmpPos[0]*objectScale[0],tmpPos[1]*objectScale[1],tmpPos[2]*objectScale[2]))
+                        tmpScl = Bone.scale
+                        
                         if self.use_yx_orientation:
-                            tmpQuat = Mat.to_quaternion()
                             CurFile.write(struct.pack('<f', tmpQuat[2]))
                             CurFile.write(struct.pack('<f', tmpQuat[3]))
                             CurFile.write(struct.pack('<f', tmpQuat[1]))
                             CurFile.write(struct.pack('<f', tmpQuat[0]))
                             
-                            tmpPos = Mat.translation
                             CurFile.write(struct.pack('<f', tmpPos[1]))
                             CurFile.write(struct.pack('<f', tmpPos[2]))
                             CurFile.write(struct.pack('<f', tmpPos[0]))
                             CurFile.write(struct.pack('<f', 0.0))
                             
-                            tmpScl = Bone.scale
                             CurFile.write(struct.pack('<f', tmpScl[1]))
                             CurFile.write(struct.pack('<f', tmpScl[2]))
                             CurFile.write(struct.pack('<f', tmpScl[0]))
                             CurFile.write(struct.pack('<f', 0.0))
                         else:
-                            tmpQuat = Mat.to_quaternion()
                             CurFile.write(struct.pack('<f', tmpQuat[1]))
                             CurFile.write(struct.pack('<f', tmpQuat[2]))
                             CurFile.write(struct.pack('<f', tmpQuat[3]))
                             CurFile.write(struct.pack('<f', tmpQuat[0]))
                             
-                            tmpPos = Mat.translation
                             CurFile.write(struct.pack('<f', tmpPos[0]))
                             CurFile.write(struct.pack('<f', tmpPos[1]))
                             CurFile.write(struct.pack('<f', tmpPos[2]))
                             CurFile.write(struct.pack('<f', 0.0))
                             
-                            tmpScl = Bone.scale
                             CurFile.write(struct.pack('<f', tmpScl[0]))
                             CurFile.write(struct.pack('<f', tmpScl[1]))
                             CurFile.write(struct.pack('<f', tmpScl[2]))
                             CurFile.write(struct.pack('<f', 0.0))
-            
-            # TODO: add fast mode that is at least serviceable
-            elif self.scale_correct == "fast":
-                print("Eventually...")
-            
             
             Scene.frame_current = CurrentFrame
             utils_set_mode(CurrentMode)             

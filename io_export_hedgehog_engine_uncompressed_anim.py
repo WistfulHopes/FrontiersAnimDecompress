@@ -2,7 +2,7 @@ bl_info = {
     "name": "Hedgehog Engine 2 Uncompressed Animation Export",
     "author": "WistfulHopes, AdelQ",
     "version": (1, 1, 0),
-    "blender": (2, 82, 0),
+    "blender": (3, 3, 0),
     "location": "File > Import-Export",
     "description": "A script to export uncompressed animations for Hedgehog Engine 2 games",
     "warning": "",

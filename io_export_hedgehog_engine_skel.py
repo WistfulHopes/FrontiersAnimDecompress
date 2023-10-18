@@ -1,8 +1,8 @@
 bl_info = {
     "name": "Hedgehog Engine 2 Skeleton Export",
     "author": "WistfulHopes",
-    "version": (1, 0, 0),
-    "blender": (2, 82, 0),
+    "version": (1, 1, 0),
+    "blender": (3, 3, 0),
     "location": "File > Import-Export",
     "description": "A script to export skeletons for Hedgehog Engine 2 games",
     "warning": "",

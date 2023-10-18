@@ -2,7 +2,7 @@ bl_info = {
     "name": "Hedgehog Engine 2 Decompressed Animation Import",
     "author": "Turk, WistfulHopes, AdelQ",
     "version": (1, 1, 0),
-    "blender": (2, 82, 0),
+    "blender": (3, 3, 0),
     "location": "File > Import-Export",
     "description": "A script to import decompressed animations from Hedgehog Engine 2 games",
     "warning": "",

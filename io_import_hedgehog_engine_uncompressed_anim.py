@@ -180,7 +180,7 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
                                 Bone, Level = queue.popleft()
                                 Arm.data.bones[Bone.name].inherit_scale = 'ALIGNED'
                                 if Level != CurrentLevel:   # Track level of bone hierarchy, only updating scene once an entire level is cleared instead of for each bone (HUGE performance improvement)
-                                    bpy.context.view_layer.update()
+                                    #bpy.context.view_layer.update() # 33% faster without this update, potentially unforseen consequences :P
                                     CurrentLevel = Level
                                     BonesProcessed = 1
                                     BonesInLevel = len(queue) + 1

@@ -1,8 +1,8 @@
 bl_info = {
     "name": "Hedgehog Engine 2 Skeleton Export",
     "author": "WistfulHopes",
-    "version": (1, 0, 0),
-    "blender": (2, 82, 0),
+    "version": (1, 11, 0),
+    "blender": (3, 3, 0),
     "location": "File > Import-Export",
     "description": "A script to export skeletons for Hedgehog Engine 2 games",
     "warning": "",
@@ -103,9 +103,12 @@ class HedgeEngineSkelExport(bpy.types.Operator, ExportHelper):
     def execute(self, context):
         Arm = bpy.context.active_object
         Scene = bpy.context.scene
-        if Arm.type == 'ARMATURE':
-            CurFile = open(self.filepath,"wb")
-
+        if not Arm:
+            raise ValueError("No active object. Please select an armature as your active object.")
+        if Arm.type != 'ARMATURE':
+            raise TypeError(f"Active object \"{Arm.name}\" is not an armature. Please select an armature.")
+            
+        with open(self.filepath,"wb") as CurFile:
             magic = bytes('KSXP', 'ascii')
             
             CurFile.write(magic)
@@ -209,11 +212,8 @@ class HedgeEngineSkelExport(bpy.types.Operator, ExportHelper):
                 for x in range(4 - CurFile.tell() % 4):
                     CurFile.write(Null.to_bytes(1, 'little'))
                     OffsetTableSize += 1
-
-            CurFile.close()
-            del CurFile
-            
-            CurFile = open(self.filepath,"rb+")
+        
+        with open(self.filepath,"rb+") as CurFile:
             Content = CurFile.read()
             CurFile.seek(0, 0)
             
@@ -231,9 +231,6 @@ class HedgeEngineSkelExport(bpy.types.Operator, ExportHelper):
             CurFile.write(struct.pack('<i', 0x18))
             CurFile.write(Null.to_bytes(24, 'little'))
             CurFile.write(Content)
-            
-            CurFile.close()
-            del CurFile
             
         return {'FINISHED'}
     

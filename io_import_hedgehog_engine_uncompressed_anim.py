@@ -60,13 +60,19 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
         description="For animations that got messed up from being recompressed and decompressed multiple times",
         default="loopNo",
         )
-
+        
+    use_root_motion: BoolProperty(
+        name="Import Root Motion",
+        description="Finds associated animation file for transformation of the \"Reference\" bone",
+        default=True,
+        )
+    
     def draw(self, context):
         layout = self.layout
         uiSceneBox = layout.box()
         uiSceneBox.label(text="Animation Settings",icon='ACTION')
         uiSceneRowLoop = uiSceneBox.row()
-        uiSceneRowLoop.label(text="Fix Loop (not working):")
+        uiSceneRowLoop.label(text="Fix Loop:")
         uiSceneRowLoop.prop(self, "loop_anim", text="")
 
         uiBoneBox = layout.box()
@@ -77,7 +83,12 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
 
         uiOrientationRow = uiBoneBox.row()
         uiOrientationRow.prop(self, "use_yx_orientation",)
-
+        
+        uiFileBox = layout.box()
+        uiFileBox.label(text="File Settings",icon="FILE_BLANK")
+        uiRootMotionRow = uiFileBox.row()
+        uiRootMotionRow.prop(self, "use_root_motion")
+        
     def execute(self, context):
         Arm = bpy.context.active_object
         if not Arm:
@@ -93,7 +104,10 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
 
         for animfile in self.files:
             CurFile = open(os.path.join(os.path.dirname(self.filepath), animfile.name),"rb")
-            
+            RootFilename = os.path.basename(animfile.name) + "-root"
+            CurRootFile = 0
+            if RootFilename in os.listdir(os.path.dirname(self.filepath) + "\\") and self.use_root_motion == True:
+                CurRootFile = open(os.path.join(os.path.dirname(self.filepath), RootFilename),"rb")
             
             AnimName = os.path.basename(animfile.name)
             for x in [".outanim", ".anm", ".pxd"]:
@@ -110,7 +124,8 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
             Framerate = (FrameCount - 1) / PlayRate
             Scene.render.fps = round(Framerate)
             Scene.render.fps_base = Scene.render.fps / Framerate
-            
+            Scene.frame_start = 0
+            Scene.frame_end = FrameCount - 1
             
             loopCheck = False
             if self.loop_anim == "loopYes":
@@ -118,15 +133,11 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
             elif self.loop_anim == "loopAuto":
                 if "_loop" in animfile.name:
                     loopCheck = True
-                    
-            if loopCheck:
-                Scene.frame_start = 1
-            else:
-                Scene.frame_start = 0
-            Scene.frame_end = FrameCount - 1
 
             for x in range(FrameCount): 
                 CurFile.seek(0xC+0x30*BoneCount*x)
+                if loopCheck and x == FrameCount - 1:
+                    CurFile.seek(0xC)
                 Scene.frame_set(x)
 
                 # Establish dictionary for all bones rather than index. Slower, but can be used for applying animations to different skeletons in future.
@@ -240,20 +251,12 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
                 else:
                     raise TypeError("None or invalid scale correction method.")
             
-            
-            
-            RootFilename = os.path.basename(animfile.name) + "-root"
-            
-            if RootFilename in os.listdir(os.path.dirname(self.filepath) + "\\"):
-                CurRootFile = open(os.path.join(os.path.dirname(self.filepath), RootFilename),"rb")
-                Bone = Arm.pose.bones[0]
-                if Bone.name != "Reference":
-                    raise ValueError("Reference bone should be the only root bone")
-                    
-                for x in range(FrameCount): 
+                if CurRootFile:
+                    Bone = Arm.pose.bones[0]
                     CurRootFile.seek(0xC+0x30*x)
-                    Scene.frame_set(x)
-
+                    if loopCheck and x == FrameCount - 1:
+                        CurRootFile.seek(0xC)
+                    
                     tmpQuat = struct.unpack('<ffff', CurRootFile.read(0x10))
                     tmpPos = struct.unpack('<fff', CurRootFile.read(0xC))
                     tmpFloat = struct.unpack('<f', CurRootFile.read(0x4))[0]
@@ -283,7 +286,8 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
                     Bone.keyframe_insert('rotation_quaternion')
                     Bone.keyframe_insert('location')
                     Bone.keyframe_insert('scale')
-                    
+            
+            if CurRootFile:
                 CurRootFile.close()
                 del CurRootFile   
                 

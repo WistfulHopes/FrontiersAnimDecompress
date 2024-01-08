@@ -68,9 +68,16 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
         description="If your current skeleton uses YX orientation but your target skeleton uses XZ, enable this option to convert the animation to utilize XZ orientation",
         default=False,
         )
-
+    
+    use_root_motion: BoolProperty(
+        name="Export Root Motion",
+        description="Creates associated animation file for transformation of the \"Reference\" bone",
+        default=True,
+        )
+    
     def draw(self, context):
         layout = self.layout
+        
         uiBoneBox = layout.box()
         uiBoneBox.label(text="Armature Settings",icon="ARMATURE_DATA")
         uiScaleCorrectRow = uiBoneBox.row()
@@ -84,7 +91,7 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
         uiScaleFactorValueRow = uiBoneBox.row()
         uiScaleFactorValueRow.label(text="Scale Factor:")
         uiScaleFactorValueRow.prop(self, "scale_factor_value", text="")
-        
+
         if self.use_scale_factor == "manual":
             scaleFactorEnable = True
         else:
@@ -94,6 +101,11 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
 
         uiOrientationRow = uiBoneBox.row()
         uiOrientationRow.prop(self, "use_yx_orientation")
+        
+        uiFileBox = layout.box()
+        uiFileBox.label(text="File Settings",icon="FILE_BLANK")
+        uiRootMotionRow = uiFileBox.row()
+        uiRootMotionRow.prop(self, "use_root_motion")
         
     def execute(self, context):
         Arm = bpy.context.active_object
@@ -109,85 +121,97 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
         for Bone in Arm.data.bones:
             Bone.inherit_scale = "ALIGNED"
         
-        with open(self.filepath,"wb") as CurFile, open(self.filepath + "-root","wb") as CurFileRoot:
-            action = Arm.animation_data.action
-            
-            Framerate = Scene.render.fps / Scene.render.fps_base
-
-            CurFile.write(struct.pack('<f', float(Scene.frame_end - Scene.frame_start) / Framerate))
-            CurFile.write(struct.pack('<i', Scene.frame_end - Scene.frame_start + 1))
-            CurFile.write(struct.pack('<i', len(Arm.pose.bones)))
-            CurFileRoot.write(struct.pack('<f', float(Scene.frame_end - Scene.frame_start) / Framerate))
-            CurFileRoot.write(struct.pack('<i', Scene.frame_end - Scene.frame_start + 1))
-            CurFileRoot.write(struct.pack('<i', 1))
-
-            
-            for x in range(Scene.frame_end - Scene.frame_start + 1):
-                Scene.frame_set(Scene.frame_start + x)
-                
-                # Corrects bone positions as a result of scaling; should be used wherever possible
-                if self.scale_correct == "accurate":
-                    BoneMats = {}
-                    BoneScales = {}
-                    BoneLengths = {}
-                    
-                    # Get scaled positions, reset scales
-                    for Bone in Arm.pose.bones:
-                        BoneLengths.update({Bone.name:0.0})
-                        BoneMats.update({Bone.name:Bone.matrix.copy()})
-                        BoneScales.update({Bone.name:Bone.scale.copy()})
-                        Bone.scale = mathutils.Vector((1.0,1.0,1.0))
-                    
-                    # Updated scaled positions to unscaled bones
-                    queue_transforms(Arm, BoneMats)
-                    
-                    # Caclulate and write transforms to file
-                    for Bone in Arm.pose.bones:
-                        if Bone.parent:
-                            ParentMat = Bone.parent.matrix.copy()
-                        elif self.use_yx_orientation:
-                            ParentMat = mathutils.Matrix() @ mathutils.Matrix.Rotation(math.radians(-90.0), 4, 'X') @ mathutils.Matrix.Rotation(math.radians(-90.0), 4, 'Z')
-                        else:
-                            ParentMat = mathutils.Matrix() 
-                        tmpQuat = (ParentMat.inverted() @ Bone.matrix.copy()).to_quaternion()
-                        tmpPos = (ParentMat.inverted() @ mathutils.Matrix.Translation(Bone.matrix.translation)).translation
-                        tmpScl = BoneScales[Bone.name]
-                        tmpLength = Bone.length
-                        
-                        if Bone.name == "Reference":
-                            anim_export(CurFileRoot, tmpPos, tmpQuat, tmpScl, tmpLength, self)
-                            anim_export(CurFile, (0.0,0.0,0.0), (1.0,0.0,0.0,0.0), (1,1,1), 0.0, self)
-                        else:
-                            anim_export(CurFile, tmpPos, tmpQuat, tmpScl, tmpLength, self)
-                            
-                            
-                    # Restore old transforms in case of missing keyframes  
-                    for Bone in Arm.pose.bones:
-                        Bone.scale = BoneScales[Bone.name]
-                    queue_transforms(Arm, BoneMats)
+        CurFile = io.BytesIO()
+        CurFileRoot = io.BytesIO()
         
-                # Original plug-in method, only marginally faster and does not treat scales properly
-                elif self.scale_correct == "legacy":
-                    for Bone in Arm.pose.bones:
-                        if Bone.parent:
-                            Mat = Bone.parent.matrix.inverted() @ Arm.convert_space(pose_bone=Bone,matrix = Bone.matrix_basis,from_space='LOCAL',to_space='POSE')
-                        elif self.use_yx_orientation:
-                            Mat = Arm.convert_space(pose_bone=Bone,matrix = Bone.matrix_basis,from_space='LOCAL',to_space='POSE') @ mathutils.Matrix.Rotation(math.radians(90.0), 4, 'Z') @ mathutils.Matrix.Rotation(math.radians(90.0), 4, 'X')
-                        else:
-                            Mat = Arm.convert_space(pose_bone=Bone,matrix = Bone.matrix_basis,from_space='LOCAL',to_space='POSE')
-                        tmpQuat = Mat.to_quaternion()
-                        tmpPos = Mat.translation
-                        tmpScl = Bone.scale
+        action = Arm.animation_data.action
+        Framerate = Scene.render.fps / Scene.render.fps_base
+
+        CurFile.write(struct.pack('<f', float(Scene.frame_end - Scene.frame_start) / Framerate))
+        CurFile.write(struct.pack('<i', Scene.frame_end - Scene.frame_start + 1))
+        CurFile.write(struct.pack('<i', len(Arm.pose.bones)))
+        
+        CurFileRoot.write(struct.pack('<f', float(Scene.frame_end - Scene.frame_start) / Framerate))
+        CurFileRoot.write(struct.pack('<i', Scene.frame_end - Scene.frame_start + 1))
+        CurFileRoot.write(struct.pack('<i', 1))
+
+        
+        for x in range(Scene.frame_end - Scene.frame_start + 1):
+            Scene.frame_set(Scene.frame_start + x)
+            
+            # Corrects bone positions as a result of scaling; should be used wherever possible
+            if self.scale_correct == "accurate":
+                BoneMats = {}
+                BoneScales = {}
+                BoneLengths = {}
+                
+                # Get scaled positions, reset scales
+                for Bone in Arm.pose.bones:
+                    BoneLengths.update({Bone.name:0.0})
+                    BoneMats.update({Bone.name:Bone.matrix.copy()})
+                    BoneScales.update({Bone.name:Bone.scale.copy()})
+                    Bone.scale = mathutils.Vector((1.0,1.0,1.0))
+                
+                # Updated scaled positions to unscaled bones
+                queue_transforms(Arm, BoneMats)
+                
+                # Caclulate and write transforms to file
+                for Bone in Arm.pose.bones:
+                    if Bone.parent:
+                        ParentMat = Bone.parent.matrix.copy()
+                    elif self.use_yx_orientation:
+                        ParentMat = mathutils.Matrix() @ mathutils.Matrix.Rotation(math.radians(-90.0), 4, 'X') @ mathutils.Matrix.Rotation(math.radians(-90.0), 4, 'Z')
+                    else:
+                        ParentMat = mathutils.Matrix() 
+                    tmpQuat = (ParentMat.inverted() @ Bone.matrix.copy()).to_quaternion()
+                    tmpPos = (ParentMat.inverted() @ mathutils.Matrix.Translation(Bone.matrix.translation)).translation
+                    tmpScl = BoneScales[Bone.name]
+                    tmpLength = Bone.length
+                    
+                    if Bone.name == "Reference":
+                        anim_export(CurFileRoot, tmpPos, tmpQuat, tmpScl, tmpLength, self)
+                        anim_export(CurFile, (0.0,0.0,0.0), (1.0,0.0,0.0,0.0), (1,1,1), 0.0, self)
+                    else:
+                        anim_export(CurFile, tmpPos, tmpQuat, tmpScl, tmpLength, self)
                         
-                        if Bone.name == "Reference":
-                            anim_export(CurFileRoot, tmpPos, tmpQuat, tmpScl, tmpLength, self)
-                            anim_export(CurFile, (0.0,0.0,0.0), (1.0,0.0,0.0,0.0), (1,1,1), 0.0, self)
-                        else:
-                            anim_export(CurFile, tmpPos, tmpQuat, tmpScl, 0.0, self)
-            
-                else:
-                    raise TypeError("None or invalid scale correction method.")
-            
+                        
+                # Restore old transforms in case of missing keyframes  
+                for Bone in Arm.pose.bones:
+                    Bone.scale = BoneScales[Bone.name]
+                queue_transforms(Arm, BoneMats)
+    
+            # Original plug-in method, only marginally faster and does not treat scales properly
+            elif self.scale_correct == "legacy":
+                for Bone in Arm.pose.bones:
+                    if Bone.parent:
+                        Mat = Bone.parent.matrix.inverted() @ Arm.convert_space(pose_bone=Bone,matrix = Bone.matrix_basis,from_space='LOCAL',to_space='POSE')
+                    elif self.use_yx_orientation:
+                        Mat = Arm.convert_space(pose_bone=Bone,matrix = Bone.matrix_basis,from_space='LOCAL',to_space='POSE') @ mathutils.Matrix.Rotation(math.radians(90.0), 4, 'Z') @ mathutils.Matrix.Rotation(math.radians(90.0), 4, 'X')
+                    else:
+                        Mat = Arm.convert_space(pose_bone=Bone,matrix = Bone.matrix_basis,from_space='LOCAL',to_space='POSE')
+                    tmpQuat = Mat.to_quaternion()
+                    tmpPos = Mat.translation
+                    tmpScl = Bone.scale
+                    
+                    if Bone.name == "Reference":
+                        anim_export(CurFileRoot, tmpPos, tmpQuat, tmpScl, tmpLength, self)
+                        anim_export(CurFile, (0.0,0.0,0.0), (1.0,0.0,0.0,0.0), (1,1,1), 0.0, self)
+                    else:
+                        anim_export(CurFile, tmpPos, tmpQuat, tmpScl, 0.0, self)
+        
+            else:
+                raise TypeError("None or invalid scale correction method.")
+        
+        
+        with open(self.filepath,"wb") as Export:
+            Export.write(CurFile.getvalue())
+        CurFile.close()
+        
+        if self.use_root_motion == True:
+            with open(self.filepath + "-root","wb") as Export:
+                Export.write(CurFileRoot.getvalue())
+        CurFileRoot.close()
+        
         Scene.frame_current = CurrentFrame
         utils_set_mode(CurrentMode)             
         

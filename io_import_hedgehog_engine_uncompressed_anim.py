@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Hedgehog Engine 2 Decompressed Animation Import",
     "author": "Turk, WistfulHopes, AdelQ",
-    "version": (1, 1, 0),
+    "version": (1, 11, 0),
     "blender": (3, 3, 0),
     "location": "File > Import-Export",
     "description": "A script to import decompressed animations from Hedgehog Engine 2 games",
@@ -52,12 +52,12 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
 
     loop_anim: EnumProperty(
         items=[
-            ("loopAuto", "Auto", "Automatically determine if the animation is a loop based on the file name", 1),
-            ("loopYes", "Yes", "Treat the animation as a looping animation, shifting the start frame by +1", 2),
-            ("loopNo", "No", "Play the whole animation from start to end. May result in hitching during viewport playback if it's supposed to be a loop, but still recommended for batch animation conversions", 3),
+            ("loopAuto", "Auto", "Fix loop if \"_loop\" is in the file name", 1),
+            ("loopYes", "Yes", "Copies the first frame to the last frame", 2),
+            ("loopNo", "No", "Import the last frame's pose data from the file", 3),
             ],
         name="Loop",
-        description="Determines if this animation is meant to be a loop. This shifts the start frame by one to prevent hitching during playback (start frame still needs to be shifted back before export)",
+        description="For animations that got messed up from being recompressed and decompressed multiple times",
         default="loopNo",
         )
 
@@ -66,7 +66,7 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
         uiSceneBox = layout.box()
         uiSceneBox.label(text="Animation Settings",icon='ACTION')
         uiSceneRowLoop = uiSceneBox.row()
-        uiSceneRowLoop.label(text="Is Loop?")
+        uiSceneRowLoop.label(text="Fix Loop (not working):")
         uiSceneRowLoop.prop(self, "loop_anim", text="")
 
         uiBoneBox = layout.box()
@@ -93,16 +93,24 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
 
         for animfile in self.files:
             CurFile = open(os.path.join(os.path.dirname(self.filepath), animfile.name),"rb")
-
+            
+            
+            AnimName = os.path.basename(animfile.name)
+            for x in [".outanim", ".anm", ".pxd"]:
+                AnimName = AnimName.replace(x, "")
+                
             Arm.animation_data_create()
-            action = bpy.data.actions.new(os.path.basename(animfile.name))
+            action = bpy.data.actions.new(AnimName)
             Arm.animation_data.action = action
             
             PlayRate = struct.unpack('<f', CurFile.read(0x4))[0]
             FrameCount = int.from_bytes(CurFile.read(4),byteorder='little')
             BoneCount = int.from_bytes(CurFile.read(4),byteorder='little')
-
-            Scene.render.fps = int((FrameCount - 1) / PlayRate)
+            
+            Framerate = (FrameCount - 1) / PlayRate
+            Scene.render.fps = round(Framerate)
+            Scene.render.fps_base = Scene.render.fps / Framerate
+            
             
             loopCheck = False
             if self.loop_anim == "loopYes":
@@ -133,7 +141,7 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
 
                     tmpQuat = struct.unpack('<ffff', CurFile.read(0x10))
                     tmpPos = struct.unpack('<fff', CurFile.read(0xC))
-                    tmpFloat = struct.unpack('<f', CurFile.read(0x4)) #TODO: Figure out what this value actually does. Seems to always be different
+                    tmpFloat = struct.unpack('<f', CurFile.read(0x4))[0] #TODO: Figure out what this value actually does. Seems to always be different
                     tmpScl = struct.unpack('<fff', CurFile.read(0xC))
                     CurFile.read(4) # Always 1.0 as far as I've seen
 
@@ -156,14 +164,13 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
                     BoneMats.update({Bone.name:BoneMat})
 
                     BoneMatNoScale = mathutils.Matrix.LocRotScale(tmpPos, tmpQuat, mathutils.Vector((1.0,1.0,1.0)))
-                    BoneMatsNoScale.update({Bone.name:BoneMatNoScale})
-
-                
+                    BoneMatsNoScale.update({Bone.name:BoneMatNoScale})  
+                    
                 ### APPLY TRANSFORMS ###
                 
                 # Method 1: BFS algorithm to go down the parent hierarchy calculating the unscaled position matrices.
                 # Needs scene updates to be accurate. Keeps track of bone hierarchy level so scene updates only after each level rather than per bone.
-                # More complex than stardard BFS algorithm, but HUUUUUUGE performance improvement from updating the scene less. 
+                # More complex than stardard BFS algorithm, but HUUUUUUGE performance improvement by updating the scene less. 
                 
                 if self.scale_correct == 'accurate':
                     for y in root_bones(Arm):
@@ -187,7 +194,7 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
                                 ParentMat = mathutils.Matrix() @ mathutils.Matrix.Rotation(math.radians(-90.0), 4, 'X') @ mathutils.Matrix.Rotation(math.radians(-90.0), 4, 'Z')
                             else:
                                 ParentMat = mathutils.Matrix()
-                            
+                                
                             # Get unscaled transform matrix of parent bone and use that as basis to get the correct position
                             for z in reversed(Bone.parent_recursive):
                                 ParentMat @= BoneMatsNoScale[z.name]
@@ -232,7 +239,54 @@ class HedgeEngineAnimation(bpy.types.Operator, ImportHelper):
 
                 else:
                     raise TypeError("None or invalid scale correction method.")
+            
+            
+            
+            RootFilename = os.path.basename(animfile.name) + "-root"
+            
+            if RootFilename in os.listdir(os.path.dirname(self.filepath) + "\\"):
+                CurRootFile = open(os.path.join(os.path.dirname(self.filepath), RootFilename),"rb")
+                Bone = Arm.pose.bones[0]
+                if Bone.name != "Reference":
+                    raise ValueError("Reference bone should be the only root bone")
                     
+                for x in range(FrameCount): 
+                    CurRootFile.seek(0xC+0x30*x)
+                    Scene.frame_set(x)
+
+                    tmpQuat = struct.unpack('<ffff', CurRootFile.read(0x10))
+                    tmpPos = struct.unpack('<fff', CurRootFile.read(0xC))
+                    tmpFloat = struct.unpack('<f', CurRootFile.read(0x4))[0]
+                    tmpScl = struct.unpack('<fff', CurRootFile.read(0xC))
+                    CurRootFile.read(4)
+
+                    if self.use_yx_orientation:
+                        tmpPos = mathutils.Vector((tmpPos[0],tmpPos[1],tmpPos[2]))
+                        tmpQuat = mathutils.Quaternion((tmpQuat[3],tmpQuat[2],tmpQuat[0],tmpQuat[1]))
+                        if tmpScl != (0.0,0.0,0.0):
+                            tmpScl = mathutils.Vector((tmpScl[2],tmpScl[0],tmpScl[1]))
+                        else:
+                            tmpScl = mathutils.Vector((1.0,1.0,1.0))
+                    else:
+                        tmpPos = mathutils.Vector((tmpPos[0],tmpPos[1],tmpPos[2]))
+                        tmpQuat = mathutils.Quaternion((tmpQuat[3],tmpQuat[0],tmpQuat[1],tmpQuat[2]))
+                        if tmpScl != (0.0,0.0,0.0):
+                            tmpScl = mathutils.Vector((tmpScl[0],tmpScl[1],tmpScl[2]))
+                        else:
+                            tmpScl = mathutils.Vector((1.0,1.0,1.0))
+                    
+                    BoneMat = mathutils.Matrix.LocRotScale(tmpPos, tmpQuat, tmpScl)
+                    if self.use_yx_orientation:
+                        BoneMat @= mathutils.Matrix.Rotation(math.radians(-90.0), 4, 'X') @ mathutils.Matrix.Rotation(math.radians(-90.0), 4, 'Z')
+                    
+                    Bone.matrix = BoneMat 
+                    Bone.keyframe_insert('rotation_quaternion')
+                    Bone.keyframe_insert('location')
+                    Bone.keyframe_insert('scale')
+                    
+                CurRootFile.close()
+                del CurRootFile   
+                
             CurFile.close()
             del CurFile
         

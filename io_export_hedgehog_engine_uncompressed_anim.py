@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Hedgehog Engine 2 Uncompressed Animation Export",
     "author": "WistfulHopes, AdelQ",
-    "version": (1, 1, 1),
+    "version": (1, 11, 0),
     "blender": (3, 3, 0),
     "location": "File > Import-Export",
     "description": "A script to export uncompressed animations for Hedgehog Engine 2 games",
@@ -109,12 +109,18 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
         for Bone in Arm.data.bones:
             Bone.inherit_scale = "ALIGNED"
         
-        with open(self.filepath,"wb") as CurFile:
+        with open(self.filepath,"wb") as CurFile, open(self.filepath + "-root","wb") as CurFileRoot:
             action = Arm.animation_data.action
             
-            CurFile.write(struct.pack('<f', float(Scene.frame_end - Scene.frame_start) / Scene.render.fps))
+            Framerate = Scene.render.fps / Scene.render.fps_base
+
+            CurFile.write(struct.pack('<f', float(Scene.frame_end - Scene.frame_start) / Framerate))
             CurFile.write(struct.pack('<i', Scene.frame_end - Scene.frame_start + 1))
             CurFile.write(struct.pack('<i', len(Arm.pose.bones)))
+            CurFileRoot.write(struct.pack('<f', float(Scene.frame_end - Scene.frame_start) / Framerate))
+            CurFileRoot.write(struct.pack('<i', Scene.frame_end - Scene.frame_start + 1))
+            CurFileRoot.write(struct.pack('<i', 1))
+
             
             for x in range(Scene.frame_end - Scene.frame_start + 1):
                 Scene.frame_set(Scene.frame_start + x)
@@ -123,16 +129,18 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
                 if self.scale_correct == "accurate":
                     BoneMats = {}
                     BoneScales = {}
+                    BoneLengths = {}
                     
                     # Get scaled positions, reset scales
                     for Bone in Arm.pose.bones:
+                        BoneLengths.update({Bone.name:0.0})
                         BoneMats.update({Bone.name:Bone.matrix.copy()})
                         BoneScales.update({Bone.name:Bone.scale.copy()})
                         Bone.scale = mathutils.Vector((1.0,1.0,1.0))
                     
                     # Updated scaled positions to unscaled bones
                     queue_transforms(Arm, BoneMats)
-                                
+                    
                     # Caclulate and write transforms to file
                     for Bone in Arm.pose.bones:
                         if Bone.parent:
@@ -144,8 +152,14 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
                         tmpQuat = (ParentMat.inverted() @ Bone.matrix.copy()).to_quaternion()
                         tmpPos = (ParentMat.inverted() @ mathutils.Matrix.Translation(Bone.matrix.translation)).translation
                         tmpScl = BoneScales[Bone.name]
+                        tmpLength = Bone.length
                         
-                        anim_export(CurFile, Arm, tmpPos, tmpQuat, tmpScl, self)
+                        if Bone.name == "Reference":
+                            anim_export(CurFileRoot, tmpPos, tmpQuat, tmpScl, tmpLength, self)
+                            anim_export(CurFile, (0.0,0.0,0.0), (1.0,0.0,0.0,0.0), (1,1,1), 0.0, self)
+                        else:
+                            anim_export(CurFile, tmpPos, tmpQuat, tmpScl, tmpLength, self)
+                            
                             
                     # Restore old transforms in case of missing keyframes  
                     for Bone in Arm.pose.bones:
@@ -165,7 +179,11 @@ class HedgeEngineAnimationExport(bpy.types.Operator, ExportHelper):
                         tmpPos = Mat.translation
                         tmpScl = Bone.scale
                         
-                        anim_export(CurFile, Arm, tmpPos, tmpQuat, tmpScl, self)
+                        if Bone.name == "Reference":
+                            anim_export(CurFileRoot, tmpPos, tmpQuat, tmpScl, tmpLength, self)
+                            anim_export(CurFile, (0.0,0.0,0.0), (1.0,0.0,0.0,0.0), (1,1,1), 0.0, self)
+                        else:
+                            anim_export(CurFile, tmpPos, tmpQuat, tmpScl, 0.0, self)
             
                 else:
                     raise TypeError("None or invalid scale correction method.")
@@ -203,7 +221,7 @@ def queue_transforms(Arm, BoneMats):
             if BonesProcessed == BonesInLevel:
                 bpy.context.view_layer.update() 
 
-def anim_export(CurFile, Arm, tmpPos, tmpQuat, tmpScl, ClassSelf):
+def anim_export(CurFile, tmpPos, tmpQuat, tmpScl, tmpLength, ClassSelf):
     if ClassSelf.use_scale_factor == "manual":
         tmpPos *= ClassSelf.scale_factor_value
     elif ClassSelf.use_scale_factor == "object":
@@ -212,13 +230,13 @@ def anim_export(CurFile, Arm, tmpPos, tmpQuat, tmpScl, ClassSelf):
     if ClassSelf.use_yx_orientation:
         CurFile.write(struct.pack('<ffff', tmpQuat[2],tmpQuat[3],tmpQuat[1],tmpQuat[0])) 
         CurFile.write(struct.pack('<fff', tmpPos[1],tmpPos[2],tmpPos[0])) 
-        CurFile.write(struct.pack('<f', 0.0)) 
+        CurFile.write(struct.pack('<f', tmpLength)) 
         CurFile.write(struct.pack('<fff', tmpScl[1],tmpScl[2],tmpScl[0])) 
         CurFile.write(struct.pack('<f', 1.0)) 
     else:
         CurFile.write(struct.pack('<ffff', tmpQuat[1],tmpQuat[2],tmpQuat[3],tmpQuat[0]))
         CurFile.write(struct.pack('<fff', tmpPos[0],tmpPos[1],tmpPos[2]))
-        CurFile.write(struct.pack('<f', 0.0))
+        CurFile.write(struct.pack('<f', tmpLength))
         CurFile.write(struct.pack('<fff', tmpScl[0],tmpScl[1],tmpScl[2]))
         CurFile.write(struct.pack('<f', 1.0))
 

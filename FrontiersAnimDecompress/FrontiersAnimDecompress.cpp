@@ -261,6 +261,7 @@ bool decompress(char* filename, uint32_t data_offset)
 	return true;
 }
 
+#pragma optimize("", off) 
 track_array_qvvf load_tracks(const char*& buffer, ansi_allocator& allocator, uint32_t sample_count, float sample_rate, uint32_t track_count)
 {
 	track_array_qvvf raw_track_list(allocator, track_count);
@@ -289,7 +290,6 @@ track_array_qvvf load_tracks(const char*& buffer, ansi_allocator& allocator, uin
 	return raw_track_list;
 }
 
-#pragma optimize("", off) 
 bool compress(char* filename)
 {
 	const char* buffer = nullptr;

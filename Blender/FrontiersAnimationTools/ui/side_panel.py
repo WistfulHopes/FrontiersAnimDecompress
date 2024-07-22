@@ -10,6 +10,7 @@ from ..animation.batch_export import FrontiersAnimBatchExport
 from .func_ops import (MakeFrontiersActionActive,
                        ClearFrontiersFakeUser,
                        MakeFrontiersActionPersistent,
+                       SetTransformModes,
                        filter_actions)
 
 
@@ -36,6 +37,15 @@ class FrontiersAnimationPanel(bpy.types.Panel):
             icon='EXPORT',
         )
 
+        skel_box = layout.box()
+        skel_box.label(text="Skeleton Settings", icon='OUTLINER_OB_ARMATURE')
+
+        skel_box.operator(
+            SetTransformModes.bl_idname,
+            text="Fix Transform Modes",
+            icon='BONE_DATA',
+        )
+
         action_box = layout.box()
         action_box.label(text="Action Settings", icon='ACTION')
 
@@ -50,24 +60,16 @@ class FrontiersAnimationPanel(bpy.types.Panel):
             icon='FAKE_USER_OFF',
         )
 
+        filter_label_row = action_box.row()
+        filter_label_row.label(text="Filter actions by name:")
+
         name_prefix_row = action_box.row()
-        name_prefix_row.column().label(text="Prefix Filter:")
+        name_prefix_row.column().label(text="Starts with:")
         name_prefix_row.column().prop(context.scene, 'frontiers_anim_prefix', text="")
 
         name_filter_row = action_box.row()
-        name_filter_row.column().label(text="Contains Filter:")
+        name_filter_row.column().label(text="Contains:")
         name_filter_row.column().prop(context.scene, 'frontiers_anim_contains', text="")
-
-        '''
-        # TODO: Make action list not dynamic for performance gain?
-        # Blender slows down in general with lots of actions, so maybe not a big deal
-        
-        filter_op = action_box.operator(
-            MakeFrontiersFilteredList.bl_idname,
-            text="Filter List",
-            icon='FILTER',
-        )
-        '''
 
         action_list_box = action_box.box()
 
@@ -78,18 +80,23 @@ class FrontiersAnimationPanel(bpy.types.Panel):
         act_col = action_grid.column()
         act_col.label(icon='SCENE_DATA')
 
-        # Slows down with lots of actions. Seems like Blender in general just does that?
-        for action in bpy.data.actions:
-            if action.name.startswith(context.scene.frontiers_anim_prefix) and context.scene.frontiers_anim_contains in action.name:
-                action_grid.prop(action, 'name', text="")
-                action_grid.prop(action, 'pxd_export', text="")
-                ma = action_grid.operator(
-                            MakeFrontiersActionActive.bl_idname,
-                            text="",
-                            icon='CON_ACTION'
-                )
+        if bpy.data.actions:
+            # Slows down with lots of actions. Seems like Blender in general just does that?
+            for action in bpy.data.actions:
+                if action.name.startswith(context.scene.frontiers_anim_prefix):
+                    if context.scene.frontiers_anim_contains in action.name:
+                        action_grid.prop(action, 'name', text="")
+                        action_grid.prop(action, 'pxd_export', text="")
+                        ma = action_grid.operator(
+                                    MakeFrontiersActionActive.bl_idname,
+                                    text="",
+                                    icon='CON_ACTION'
+                        )
 
-                ma.anim_name = action.name
+                        ma.anim_name = action.name
+
+        else:
+            action_list_box.label(text="No actions in scene...")
 
 
 def register():
@@ -97,6 +104,7 @@ def register():
     bpy.utils.register_class(MakeFrontiersActionActive)
     bpy.utils.register_class(ClearFrontiersFakeUser)
     bpy.utils.register_class(MakeFrontiersActionPersistent)
+    bpy.utils.register_class(SetTransformModes)
 
     bpy.types.Scene.frontiers_anim_prefix = StringProperty(
         name="Action Prefix",
@@ -118,6 +126,7 @@ def unregister():
     bpy.utils.unregister_class(MakeFrontiersActionActive)
     bpy.utils.unregister_class(ClearFrontiersFakeUser)
     bpy.utils.unregister_class(MakeFrontiersActionPersistent)
+    bpy.utils.unregister_class(SetTransformModes)
 
     del bpy.types.Scene.frontiers_anim_prefix
     del bpy.types.Scene.frontiers_anim_contains

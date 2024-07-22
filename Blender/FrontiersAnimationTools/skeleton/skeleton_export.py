@@ -81,14 +81,14 @@ class HedgehogSkeletonExport(bpy.types.Operator, ExportHelper):
 
     @classmethod
     def poll(cls, context):
-        obj = bpy.context.active_object
+        obj = context.active_object
         if obj and obj.type == 'ARMATURE':
             return True
         else:
             return False
 
     def execute(self, context):
-        arm_active = bpy.context.active_object
+        arm_active = context.active_object
         if not arm_active:
             self.report({'INFO'}, f"No active armature. Please select an armature.")
             return {'CANCELLED'}

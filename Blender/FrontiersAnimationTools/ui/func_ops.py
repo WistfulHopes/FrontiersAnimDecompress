@@ -21,18 +21,23 @@ class MakeFrontiersActionActive(bpy.types.Operator):
 
     def execute(self, context):
         rms = 1 / math.sqrt(2)
+        arm_active = context.active_object
+        scene_active = context.scene
+
         if self.anim_name:
             action = bpy.data.actions[self.anim_name]
-            context.active_object.animation_data.action = action
-            context.scene.render.fps = int(round(action.pxd_fps))
-            context.scene.render.fps_base = context.scene.render.fps / action.pxd_fps
-            context.scene.frame_start = round(action.frame_start)
-            context.scene.frame_end = round(action.frame_end)
+            if not arm_active.animation_data:
+                arm_active.animation_data_create()
+            arm_active.animation_data.action = action
+            scene_active.render.fps = int(round(action.pxd_fps))
+            scene_active.render.fps_base = scene_active.render.fps / action.pxd_fps
+            scene_active.frame_start = round(action.frame_start)
+            scene_active.frame_end = round(action.frame_end)
 
             if not action.pxd_root:
-                context.active_object.rotation_quaternion = mathutils.Quaternion((rms, rms, 0.0, 0.0))
-                context.active_object.location = mathutils.Vector((0.0, 0.0, 0.0))
-                context.active_object.scale = mathutils.Vector((1.0, 1.0, 1.0))
+                arm_active.rotation_quaternion = mathutils.Quaternion((rms, rms, 0.0, 0.0))
+                arm_active.location = mathutils.Vector((0.0, 0.0, 0.0))
+                arm_active.scale = mathutils.Vector((1.0, 1.0, 1.0))
 
         return {'FINISHED'}
 
@@ -77,20 +82,26 @@ class MakeFrontiersActionPersistent(bpy.types.Operator):
         return {'FINISHED'}
 
 
-'''
-# TODO: Speed up performance by not iterating through actions every draw call?
-# Blender slows down in general with lots of actions, so maybe not a big deal
-class MakeFrontiersFilteredList(bpy.types.Operator):
-    bl_label = "Make Filtered Action List"
-    bl_idname = "anim_custom.make_filtered_frontiers_list"
-    bl_description = "Filter actions based on text inputs above"
+class SetTransformModes(bpy.types.Operator):
+    bl_label = "Correct Scale Mode"
+    bl_idname = "skel_custom.inherit_aligned_scale"
+    bl_description = "Sets correct transform types for use in HE2. Use this if the scale looks wrong for some reason"
 
-    anim_list = []
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if obj and obj.type == 'ARMATURE':
+            return True
+        else:
+            return False
 
     def execute(self, context):
-        self.anim_list = filter_actions(bpy.data.actions, context)
-        return{'FINISHED'}
-'''
+        arm_active = context.active_object
+        arm_active.rotation_mode = 'QUATERNION'
+        for bone in arm_active.data.bones:
+            if bone.inherit_scale != 'ALIGNED':
+                bone.inherit_scale = 'ALIGNED'
+        return {'FINISHED'}
 
 
 def filter_actions(action_list, context):

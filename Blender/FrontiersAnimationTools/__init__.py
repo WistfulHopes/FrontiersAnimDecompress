@@ -14,7 +14,7 @@ from .ui import side_panel
 bl_info = {
     "name": "Sonic Frontiers Animation Tools",
     "author": "AdelQ, WistfulHopes, Turk645",
-    "version": (2, 0, 0),
+    "version": (2, 1, 0),
     "blender": (4, 1, 0),
     "location": "File > Import/Export",
     "description": "Animation and skeleton importer/exporter for Hedgehog Engine 2 games with compressed animations",
@@ -58,6 +58,17 @@ def register():
         name="PXD Frame Rate",
         description="FPS value to write to PXD Animation file",
         default=30.0,
+    )
+    bpy.types.Action.pxd_compress = BoolProperty(
+        name="Compress Animation",
+        description="Determines if animation gets compressed during batch export\n\n"
+        "(NOTE: Currently this setting is ignored and will always export compressed)",
+        default=True,
+    )
+    bpy.types.Action.pxd_additive = BoolProperty(
+        name="Additive Animation",
+        description="Determines if animation is additive",
+        default=False,
     )
 
 

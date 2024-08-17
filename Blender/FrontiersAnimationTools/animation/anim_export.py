@@ -100,7 +100,7 @@ def anim_export(self_pass, filepath, arm_active, action_active, start_frame, end
         return False
 
     root_buffer_compressed = compress(buffer_root.getvalue())
-    if not len(root_buffer_compressed.getvalue()) and self.bool_root_motion is True:
+    if not len(root_buffer_compressed.getvalue()) and self_pass.bool_root_motion is True:
         self_pass.report({'WARNING'}, f"{action_active.name} root buffer failed to compress.")
         return False
 

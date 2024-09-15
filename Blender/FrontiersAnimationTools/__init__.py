@@ -14,7 +14,7 @@ from .ui import side_panel
 bl_info = {
     "name": "Sonic Frontiers Animation Tools",
     "author": "AdelQ, WistfulHopes, Turk645",
-    "version": (2, 1, 0),
+    "version": (2, 1, "0b"),
     "blender": (4, 1, 0),
     "location": "File > Import/Export",
     "description": "Animation and skeleton importer/exporter for Hedgehog Engine 2 games with compressed animations",

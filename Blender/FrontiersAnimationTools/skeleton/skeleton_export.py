@@ -1,5 +1,4 @@
 # Original skeleton export script by WistfulHopes
-# https://github.com/WistfulHopes/FrontiersAnimDecompress/
 
 import bpy
 import io
@@ -111,9 +110,13 @@ class HedgehogSkeletonExport(bpy.types.Operator, ExportHelper):
         buffer.write(len(arm_active.pose.bones).to_bytes(8, 'little'))
         buffer.write(null.to_bytes(8, 'little'))
 
-        name_offset = parent_offset + (len(arm_active.pose.bones) + 1) * 2
-        if name_offset % 0x10 != 0:
-            name_offset += 0x10 - name_offset % 0x10
+        if len(arm_active.pose.bones) % 2:
+            name_offset = parent_offset + (len(arm_active.pose.bones) + 1) * 2
+        else:
+            name_offset = parent_offset + len(arm_active.pose.bones) * 2
+
+        if name_offset % 0x8 != 0:
+            name_offset += 0x8 - name_offset % 0x8
 
         buffer.write(name_offset.to_bytes(8, 'little'))
         buffer.write(len(arm_active.pose.bones).to_bytes(8, 'little'))
@@ -121,6 +124,8 @@ class HedgehogSkeletonExport(bpy.types.Operator, ExportHelper):
         buffer.write(null.to_bytes(8, 'little'))
 
         matrix_offset = name_offset + len(arm_active.pose.bones) * 0x10
+        if matrix_offset % 0x10 != 0:
+            matrix_offset += 0x10 - matrix_offset % 0x10
 
         buffer.write(matrix_offset.to_bytes(8, 'little'))
         buffer.write(len(arm_active.pose.bones).to_bytes(8, 'little'))
@@ -131,8 +136,8 @@ class HedgehogSkeletonExport(bpy.types.Operator, ExportHelper):
             parent_index = array.parent_indices[x].to_bytes(2, 'little')
             buffer.write(parent_index)
 
-        if buffer.tell() % 0x10 != 0:
-            for x in range(0x10 - buffer.tell() % 0x10):
+        if buffer.tell() % 0x8 != 0:
+            for x in range(0x8 - buffer.tell() % 0x8):
                 buffer.write(null.to_bytes(1, 'little'))
 
         name_data_offset = matrix_offset + len(arm_active.pose.bones) * 0x30
@@ -140,6 +145,10 @@ class HedgehogSkeletonExport(bpy.types.Operator, ExportHelper):
         for x in range(len(arm_active.pose.bones)):
             buffer.write(name_data_offset.to_bytes(16, 'little'))
             name_data_offset += len(array.name[x])
+
+        if buffer.tell() % 0x10 != 0:
+            for x in range(0x10 - buffer.tell() % 0x10):
+                buffer.write(null.to_bytes(1, 'little'))
 
         for x in range(len(arm_active.pose.bones)):
             if self.use_yx_orientation:

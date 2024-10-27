@@ -20,7 +20,7 @@ bl_info = {
     "description": "Animation and skeleton importer/exporter for Hedgehog Engine 2 games with compressed animations",
     # TODO: Update HedgeDocs for this tool
     # "doc_url": "https://hedgedocs.com/guides/hedgehog-engine/rangers/animation/import-export/",
-    "tracker_url": "https://github.com/AdelQue/FrontiersAnimDecompress/issues/",
+    "tracker_url": "https://github.com/WistfulHopes/FrontiersAnimDecompress/issues/",
     "category": "Import-Export",
 }
 

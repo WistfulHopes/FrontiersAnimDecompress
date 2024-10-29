@@ -1,8 +1,8 @@
 """
 Pass raw byte-streams to and from DLL for ACL compression and decompression
-DLL Source: https://github.com/AdelQue/FrontiersAnimDecompress/
+DLL Source: https://github.com/WistfulHopes/FrontiersAnimDecompress/
 
-See below for struct of different byte streams
+See bottom of file for struct of different byte streams
 """
 
 

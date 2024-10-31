@@ -41,7 +41,7 @@ class BatchProgress:
         self.status_len = len(status) + 32
 
     def update_error(self, name=str(), error=None):
-        if name:
+        if name != str():
             self.item_name = name
         self.error_list.append(self.item_name)
         if self.method == 'IMPORT':

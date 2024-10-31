@@ -150,7 +150,8 @@ def get_uncompressed_frame_table(anim_file, frame_count, track_count, table_offs
 
 class PXDAnimParam:
     def __init__(self, file):
-        file.seek(4)
+        self.name = str()
+        file.seek(8)
         file_size = int.from_bytes(file.read(4), byteorder='little')
 
         file.seek(0x40)
@@ -194,7 +195,7 @@ class PXDAnimParam:
             self.root_offset += 0x40
 
         # Animations compressed with old FrontiersAnimDecompress had non-existent root chunk offsets beyond EOF
-        if self.root_offset > file_size or not self.root_offset:
+        if (self.root_offset > (file_size - 0x40)) or (not self.root_offset):
             self.root_offset = None
 
         file.seek(0)
@@ -324,6 +325,7 @@ class FrontiersAnimImport(bpy.types.Operator, ImportHelper):
             anim_name = file.name
             for ext in [".outanim", ".anm", ".pxd"]:
                 anim_name = anim_name.replace(ext, "")
+            anim_param.name = anim_name
             arm_active.animation_data_create()
             action_active = bpy.data.actions.new(anim_name)
             arm_active.animation_data.action = action_active
@@ -390,7 +392,7 @@ class FrontiersAnimImport(bpy.types.Operator, ImportHelper):
         main_buffer_compressed = anim_file.read(main_buffer_length)
         main_buffer = decompress(main_buffer_compressed)
         if not len(main_buffer.getvalue()):
-            self.progress.update_error(error=f"{file.name} buffer failed to initialize. File skipped.")
+            self.progress.update_error(error=f"{anim_data.name} buffer failed to initialize. File skipped.")
             return False
         del main_buffer_compressed
 
@@ -401,7 +403,7 @@ class FrontiersAnimImport(bpy.types.Operator, ImportHelper):
             root_buffer_compressed = anim_file.read(root_buffer_length)
             root_buffer = decompress(root_buffer_compressed)
             if not len(root_buffer.getvalue()):
-                self.progress.update_error(error=f"{file.name} root buffer failed to initialize. Skipping root motion.")
+                self.report({'WARNING'},f"{anim_data.name} root buffer failed to initialize. Importing without root motion.")
                 root_buffer = None
             del root_buffer_compressed
         else:
